@@ -12,6 +12,11 @@ const stateRoutes = require('./routes/stateRoutes');
 const fileRoutes = require('./routes/fileRoutes');
 const authRoutes = require('./routes/authRoutes');
 const downloadRoutes = require('./routes/downloadRoutes');
+const demographicUploadRoutes = require('./routes/demographicUploadRoutes');
+const demographicRecordRoutes = require('./routes/demographicRecordRoutes');
+const telecareRoutes = require('./routes/telecareRoutes');
+const filterRoutes = require('./routes/filterRoutes');
+const phoneNumberRoutes = require('./routes/phoneNumberRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -69,6 +74,11 @@ app.use('/api/v1', recordRoutes);
 app.use('/api/v1', stateRoutes);
 app.use('/api/v1', fileRoutes);
 app.use('/api/v1', downloadRoutes);
+app.use('/api/v1/demographic/records', demographicRecordRoutes);
+app.use('/api/v1/demographic', demographicUploadRoutes);
+app.use('/api/v1/telecare', telecareRoutes);
+app.use('/api/v1/filters', filterRoutes);
+app.use('/api/v1/phone-numbers', phoneNumberRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Layout, Menu, Typography, Space, Button, Dropdown, Avatar, Badge } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Layout, Menu, Typography, Space, Button, Dropdown, Avatar, Badge, Tooltip } from 'antd';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import {
   DashboardOutlined,
@@ -12,6 +12,9 @@ import {
   BellOutlined,
   SettingOutlined,
   GlobalOutlined,
+  BarChartOutlined,
+  SearchOutlined,
+  MenuOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -21,20 +24,49 @@ import FileUpload from './FileUpload';
 import EnhancedDataTable from './EnhancedDataTable';
 import UploadHistory from './UploadHistory';
 import States from './States';
+import DemographicDashboard from './DemographicDashboard';
+import ComprehensiveDashboard from './ComprehensiveDashboard';
+import ViewRecordsDashboard from './ViewRecordsDashboard';
 
 const { Header, Sider, Content } = Layout;
 const { Title } = Typography;
 
 const MainApp: React.FC = () => {
   const [refreshTrigger, setRefreshTrigger] = useState(0);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const { logout } = useAuth();
   const { isDarkMode } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   
+  // Check if device is mobile
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+  
   // Get current route from location
   const currentPath = location.pathname.split('/').pop() || 'dashboard';
   const selectedKey = currentPath === 'dashboard' ? 'dashboard' : currentPath;
+
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSidebarCollapsed(!sidebarCollapsed);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyPress);
+    return () => {
+      document.removeEventListener('keydown', handleKeyPress);
+    };
+  }, [sidebarCollapsed]);
 
   const menuItems = [
     {
@@ -53,6 +85,11 @@ const MainApp: React.FC = () => {
       label: 'Records',
     },
     {
+      key: 'view-records',
+      icon: <SearchOutlined />,
+      label: 'View Records',
+    },
+    {
       key: 'states',
       icon: <GlobalOutlined />,
       label: 'States',
@@ -62,10 +99,24 @@ const MainApp: React.FC = () => {
       icon: <HistoryOutlined />,
       label: 'Upload History',
     },
+    {
+      key: 'demographic',
+      icon: <BarChartOutlined />,
+      label: 'Demographic Data',
+    },
+    {
+      key: 'comprehensive',
+      icon: <SearchOutlined />,
+      label: 'Comprehensive Dashboard',
+    },
   ];
 
   const handleMenuClick = ({ key }: { key: string }) => {
     navigate(`/dashboard/${key}`);
+    // Auto-collapse sidebar on mobile after navigation
+    if (isMobile) {
+      setSidebarCollapsed(true);
+    }
   };
 
   const handleUploadSuccess = () => {
@@ -91,21 +142,35 @@ const MainApp: React.FC = () => {
         <Route path="/" element={<Dashboard />} />
         <Route path="/upload" element={<FileUpload onUploadSuccess={handleUploadSuccess} />} />
         <Route path="/records" element={<EnhancedDataTable refreshTrigger={refreshTrigger} />} />
+        <Route path="/view-records" element={<ViewRecordsDashboard />} />
         <Route path="/states" element={<States />} />
         <Route path="/history" element={<UploadHistory />} />
+        <Route path="/demographic" element={<DemographicDashboard />} />
+        <Route path="/comprehensive" element={<ComprehensiveDashboard />} />
         <Route path="*" element={<Dashboard />} />
       </Routes>
     );
   };
 
   return (
-    <Layout style={{ minHeight: '100vh' }}>
+    <Layout style={{ 
+      minHeight: '100vh',
+      background: 'transparent'
+    }}>
       <Sider
         breakpoint="lg"
         collapsedWidth="0"
+        collapsed={sidebarCollapsed}
+        onCollapse={(collapsed) => setSidebarCollapsed(collapsed)}
+        trigger={null}
         style={{
           background: isDarkMode ? '#001529' : '#ffffff',
           borderRight: `1px solid ${isDarkMode ? '#1f1f1f' : '#f0f0f0'}`,
+          transition: 'all 0.2s ease',
+          position: 'fixed',
+          height: '100vh',
+          zIndex: 1000,
+          overflow: 'auto'
         }}
       >
         <div style={{ 
@@ -120,7 +185,7 @@ const MainApp: React.FC = () => {
             fontWeight: 700,
             letterSpacing: '0.5px'
           }}>
-            SheetBC
+            Kanpur
           </Title>
           <div style={{ 
             fontSize: '12px', 
@@ -143,7 +208,11 @@ const MainApp: React.FC = () => {
         />
       </Sider>
       
-      <Layout>
+      <Layout style={{ 
+        marginLeft: sidebarCollapsed ? 0 : (isMobile ? 0 : 200),
+        transition: 'all 0.2s ease',
+        width: '100%'
+      }}>
         <Header style={{ 
           background: isDarkMode ? '#001529' : '#ffffff', 
           padding: '0 24px',
@@ -152,6 +221,13 @@ const MainApp: React.FC = () => {
           justifyContent: 'space-between',
           alignItems: 'center',
           borderBottom: `1px solid ${isDarkMode ? '#1f1f1f' : '#f0f0f0'}`,
+          position: 'fixed',
+          top: 0,
+          right: 0,
+          left: sidebarCollapsed ? 0 : (isMobile ? 0 : 200),
+          zIndex: 999,
+          transition: 'all 0.2s ease',
+          height: '64px'
         }}>
           <Space>
             <Title level={3} style={{ 
@@ -164,6 +240,17 @@ const MainApp: React.FC = () => {
           </Space>
           
           <Space size="middle">
+            <Tooltip title={sidebarCollapsed ? 'Show Sidebar (Esc)' : 'Hide Sidebar (Esc)'} placement="bottom">
+              <Button
+                type="text"
+                icon={<MenuOutlined />}
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                style={{ 
+                  fontSize: '16px',
+                  color: isDarkMode ? '#ffffff' : '#001529'
+                }}
+              />
+            </Tooltip>
             <ThemeToggle />
             <Badge count={3} size="small">
               <Button
@@ -198,11 +285,35 @@ const MainApp: React.FC = () => {
           margin: '24px 16px',
           padding: '24px',
           background: 'transparent',
-          minHeight: 'calc(100vh - 112px)'
+          marginTop: '88px', // Height of header + some spacing
+          minHeight: 'calc(100vh - 88px)',
+          overflow: 'auto'
         }}>
           {renderContent()}
         </Content>
       </Layout>
+      
+      {/* Floating Action Button when sidebar is collapsed */}
+      {sidebarCollapsed && (
+        <div style={{
+          position: 'fixed',
+          bottom: '24px',
+          left: '24px',
+          zIndex: 1001
+        }}>
+          <Button
+            type="primary"
+            shape="circle"
+            size="large"
+            icon={<MenuOutlined />}
+            onClick={() => setSidebarCollapsed(false)}
+            title="Show Sidebar"
+            style={{
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+            }}
+          />
+        </div>
+      )}
     </Layout>
   );
 };

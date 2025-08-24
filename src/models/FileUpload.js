@@ -3,20 +3,21 @@ const db = require('../config/database');
 class FileUpload {
   static async create(uploadData) {
     try {
-      const { filename, originalName, fileSize, filePath } = uploadData;
+      const { filename, originalName, fileSize, filePath, fileType = 'standard' } = uploadData;
       
       // Validate and sanitize inputs
       const filenameStr = String(filename || '').substring(0, 255);
       const originalNameStr = String(originalName || '').substring(0, 255);
       const fileSizeInt = parseInt(fileSize) || 0;
       const filePathStr = filePath ? String(filePath).substring(0, 500) : null;
+      const fileTypeStr = String(fileType || 'standard').substring(0, 50);
       
       const query = `
-        INSERT INTO file_uploads (filename, original_name, file_size, file_path, status)
-        VALUES ($1::VARCHAR(255), $2::VARCHAR(255), $3::BIGINT, $4::VARCHAR(500), $5::VARCHAR(20))
+        INSERT INTO file_uploads (filename, original_name, file_size, file_path, file_type, status)
+        VALUES ($1::VARCHAR(255), $2::VARCHAR(255), $3::BIGINT, $4::VARCHAR(500), $5::VARCHAR(50), $6::VARCHAR(20))
         RETURNING *
       `;
-      const values = [filenameStr, originalNameStr, fileSizeInt, filePathStr, 'processing'];
+      const values = [filenameStr, originalNameStr, fileSizeInt, filePathStr, fileTypeStr, 'processing'];
       const result = await db.query(query, values);
       return result.rows[0];
     } catch (error) {
@@ -58,7 +59,7 @@ class FileUpload {
   }
 
   static async findAll(options = {}) {
-    const { page = 1, limit = 20, status } = options;
+    const { page = 1, limit = 20, status, filters = {} } = options;
     const offset = (page - 1) * limit;
     
     let query = 'SELECT * FROM file_uploads';
@@ -70,6 +71,13 @@ class FileUpload {
     if (status) {
       whereConditions.push(`status = $${valueIndex}`);
       values.push(status);
+      valueIndex++;
+    }
+
+    // Add file type filter
+    if (filters.fileType) {
+      whereConditions.push(`file_type = $${valueIndex}`);
+      values.push(filters.fileType);
       valueIndex++;
     }
 
@@ -88,7 +96,7 @@ class FileUpload {
     ]);
 
     return {
-      uploads: uploadsResult.rows,
+      records: uploadsResult.rows,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -98,24 +106,71 @@ class FileUpload {
     };
   }
 
-  static async getStats() {
-    const query = `
-      SELECT 
-        COUNT(*) as total_uploads,
-        COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_uploads,
-        COUNT(CASE WHEN status = 'processing' THEN 1 END) as processing_uploads,
-        COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed_uploads,
-        SUM(records_count) as total_records_processed
-      FROM file_uploads
-    `;
-    const result = await db.query(query);
-    return result.rows[0];
+  static async delete(id) {
+    try {
+      const query = 'DELETE FROM file_uploads WHERE id = $1 RETURNING *';
+      const result = await db.query(query, [id]);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error deleting upload:', error);
+      throw error;
+    }
   }
 
-  static async deleteById(id) {
-    const query = 'DELETE FROM file_uploads WHERE id = $1 RETURNING *';
-    const result = await db.query(query, [id]);
-    return result.rows[0];
+  static async getStatsByType(fileType = null) {
+    try {
+      let query = `
+        SELECT 
+          COUNT(*) as total_uploads,
+          COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed_uploads,
+          COUNT(CASE WHEN status = 'processing' THEN 1 END) as processing_uploads,
+          COUNT(CASE WHEN status = 'failed' THEN 1 END) as failed_uploads,
+          SUM(records_count) as total_records_processed,
+          AVG(records_count) as avg_records_per_upload,
+          SUM(file_size) as total_file_size,
+          AVG(file_size) as avg_file_size
+        FROM file_uploads
+      `;
+      
+      let values = [];
+      if (fileType) {
+        query += ' WHERE file_type = $1';
+        values.push(fileType);
+      }
+      
+      const result = await db.query(query, values);
+      return result.rows[0];
+    } catch (error) {
+      console.error('Error getting upload stats:', error);
+      throw error;
+    }
+  }
+
+  static async getRecentUploads(limit = 10, fileType = null) {
+    try {
+      let query = `
+        SELECT * FROM file_uploads 
+        ORDER BY created_at DESC 
+        LIMIT $1
+      `;
+      
+      let values = [limit];
+      if (fileType) {
+        query = `
+          SELECT * FROM file_uploads 
+          WHERE file_type = $2
+          ORDER BY created_at DESC 
+          LIMIT $1
+        `;
+        values = [limit, fileType];
+      }
+      
+      const result = await db.query(query, values);
+      return result.rows;
+    } catch (error) {
+      console.error('Error getting recent uploads:', error);
+      throw error;
+    }
   }
 }
 

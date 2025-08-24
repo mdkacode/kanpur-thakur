@@ -1,0 +1,9 @@
+Filling in login form...
+Login form submitted
+Navigated to CSV upload page
+Selected file: /Users/mayank/Documents/work/thakur/sheetbc/temp_input.csv
+Checked 'Return thousands block data' option
+CSV upload form submitted
+Found 36 links, looking for CSV download link...
+Found CSV download link: https://www.telcodata.us/get-csv?file=telecare_11756022540.csv
+Downloaded file to: /Users/mayank/Documents/work/thakur/sheetbc/telcodata_bulk_output.csv

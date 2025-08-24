@@ -30,6 +30,95 @@ const createTables = async () => {
       )
     `);
 
+    // Create demographic_records table for demographic data
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS demographic_records (
+        id SERIAL PRIMARY KEY,
+        zipcode VARCHAR(10) NOT NULL,
+        state VARCHAR(50),
+        county VARCHAR(100),
+        city VARCHAR(100),
+        mhhi TEXT,
+        mhhi_moe TEXT,
+        avg_hhi TEXT,
+        avg_hhi_moe TEXT,
+        pc_income TEXT,
+        pc_income_moe TEXT,
+        pct_hh_w_income_200k_plus TEXT,
+        pct_hh_w_income_200k_plus_moe TEXT,
+        mhhi_hhldr_u25 TEXT,
+        mhhi_hhldr_u25_moe TEXT,
+        mhhi_hhldr_25_44 TEXT,
+        mhhi_hhldr_25_44_moe TEXT,
+        mhhi_hhldr_45_64 TEXT,
+        mhhi_hhldr_45_64_moe TEXT,
+        mhhi_hhldr_65_plus TEXT,
+        mhhi_hhldr_65_plus_moe TEXT,
+        hhi_total_hh TEXT,
+        hhi_hh_w_lt_25k TEXT,
+        hhi_hh_w_25k_49k TEXT,
+        hhi_hh_w_50k_74k TEXT,
+        hhi_hh_w_75k_99k TEXT,
+        hhi_hh_w_100k_149k TEXT,
+        hhi_hh_w_150k_199k TEXT,
+        hhi_hh_w_200k_plus TEXT,
+        race_ethnicity_total TEXT,
+        race_ethnicity_white TEXT,
+        race_ethnicity_black TEXT,
+        race_ethnicity_native TEXT,
+        race_ethnicity_asian TEXT,
+        race_ethnicity_islander TEXT,
+        race_ethnicity_other TEXT,
+        race_ethnicity_two TEXT,
+        race_ethnicity_hispanic TEXT,
+        pop_dens_sq_mi TEXT,
+        age_total TEXT,
+        age_f_0_9 TEXT,
+        age_f_10_19 TEXT,
+        age_f_20_29 TEXT,
+        age_f_30_39 TEXT,
+        age_f_40_49 TEXT,
+        age_f_50_59 TEXT,
+        age_f_60_69 TEXT,
+        age_f_70_plus TEXT,
+        age_m_0_9 TEXT,
+        age_m_10_19 TEXT,
+        age_m_20_29 TEXT,
+        age_m_30_39 TEXT,
+        age_m_40_49 TEXT,
+        age_m_50_59 TEXT,
+        age_m_60_69 TEXT,
+        age_m_70_plus TEXT,
+        median_age TEXT,
+        edu_att_pop_25_plus TEXT,
+        edu_att_no_diploma TEXT,
+        edu_att_high_school TEXT,
+        edu_att_some_college TEXT,
+        edu_att_bachelors TEXT,
+        edu_att_graduate TEXT,
+        family_hh_total TEXT,
+        family_poverty_pct TEXT,
+        emp_status_civ_labor_force TEXT,
+        unemployment_pct TEXT,
+        housing_units TEXT,
+        occupied_units TEXT,
+        owner_occupied TEXT,
+        renter_occupied TEXT,
+        median_value_owner_occupied_units TEXT,
+        households TEXT,
+        hh_families TEXT,
+        hh_mc_families TEXT,
+        hh_mc_with_own_children_under_18 TEXT,
+        hh_sp_families TEXT,
+        hh_sp_with_own_children_under_18 TEXT,
+        hh_non_families TEXT,
+        aland_sq_mi TEXT,
+        geoid TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Create indexes for better query performance
     await db.query(`
       CREATE INDEX IF NOT EXISTS idx_records_npa_nxx ON records(npa, nxx);
@@ -39,6 +128,12 @@ const createTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_records_city ON records(city);
       CREATE INDEX IF NOT EXISTS idx_records_created_at ON records(created_at);
       CREATE INDEX IF NOT EXISTS idx_states_code ON states(state_code);
+      
+      CREATE INDEX IF NOT EXISTS idx_demographic_records_zipcode ON demographic_records(zipcode);
+      CREATE INDEX IF NOT EXISTS idx_demographic_records_state ON demographic_records(state);
+      CREATE INDEX IF NOT EXISTS idx_demographic_records_county ON demographic_records(county);
+      CREATE INDEX IF NOT EXISTS idx_demographic_records_city ON demographic_records(city);
+      CREATE INDEX IF NOT EXISTS idx_demographic_records_created_at ON demographic_records(created_at);
     `);
 
     // Create file_uploads table
@@ -49,6 +144,7 @@ const createTables = async () => {
         original_name VARCHAR(255) NOT NULL,
         file_size BIGINT NOT NULL,
         file_path TEXT,
+        file_type VARCHAR(50) DEFAULT 'standard',
         status VARCHAR(20) DEFAULT 'processing',
         records_count INTEGER DEFAULT 0,
         error_message VARCHAR(500),
@@ -85,6 +181,21 @@ const createTables = async () => {
       await db.query(`
         ALTER TABLE file_uploads 
         ADD COLUMN file_path TEXT
+      `);
+    }
+
+    // Add file_type column if it doesn't exist
+    const checkFileTypeColumn = await db.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'file_uploads' 
+      AND column_name = 'file_type'
+    `);
+    
+    if (checkFileTypeColumn.rows.length === 0) {
+      await db.query(`
+        ALTER TABLE file_uploads 
+        ADD COLUMN file_type VARCHAR(50) DEFAULT 'standard'
       `);
     }
 
@@ -141,16 +252,13 @@ const createTables = async () => {
       ('WV', 'West Virginia', 'Southeast'),
       ('WI', 'Wisconsin', 'Midwest'),
       ('WY', 'Wyoming', 'Mountain'),
-      ('DC', 'District of Columbia', 'Northeast'),
-      ('AS', 'American Samoa', 'Territory'),
-      ('GU', 'Guam', 'Territory'),
-      ('MP', 'Northern Mariana Islands', 'Territory'),
-      ('PR', 'Puerto Rico', 'Territory'),
-      ('VI', 'U.S. Virgin Islands', 'Territory')
+      ('DC', 'District of Columbia', 'Northeast')
       ON CONFLICT (state_code) DO NOTHING
     `);
 
     console.log('Database tables created successfully');
+    return true;
+
   } catch (error) {
     console.error('Error creating tables:', error);
     throw error;

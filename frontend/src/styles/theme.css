@@ -306,3 +306,208 @@
 ::-webkit-scrollbar-thumb:hover {
   background: var(--primary-color-dark);
 }
+
+/* File Viewer Modal Theme Enhancements */
+.file-viewer-modal.dark .ant-modal-content {
+  background-color: #111827 !important;
+  color: #f9fafb !important;
+  border-color: #374151 !important;
+}
+
+.file-viewer-modal.dark .ant-modal-header {
+  background-color: #111827 !important;
+  border-bottom-color: #374151 !important;
+}
+
+.file-viewer-modal.dark .ant-modal-title {
+  color: #f9fafb !important;
+}
+
+.file-viewer-modal.dark .ant-modal-close {
+  color: #d1d5db !important;
+}
+
+.file-viewer-modal.dark .ant-modal-close:hover {
+  color: #f9fafb !important;
+  background-color: #374151 !important;
+}
+
+.file-viewer-modal.dark .ant-tabs-tab {
+  color: #d1d5db !important;
+}
+
+.file-viewer-modal.dark .ant-tabs-tab:hover {
+  color: #f9fafb !important;
+}
+
+.file-viewer-modal.dark .ant-tabs-tab-active {
+  color: #3b82f6 !important;
+}
+
+.file-viewer-modal.dark .ant-tabs-ink-bar {
+  background-color: #3b82f6 !important;
+}
+
+.file-viewer-modal.dark .ant-tabs-content-holder {
+  background-color: #111827 !important;
+}
+
+.file-viewer-modal.dark .ant-spin-dot-item {
+  background-color: #3b82f6 !important;
+}
+
+.file-viewer-modal.dark .ant-alert {
+  background-color: #1f2937 !important;
+  border-color: #374151 !important;
+}
+
+.file-viewer-modal.dark .ant-alert-message {
+  color: #f9fafb !important;
+}
+
+.file-viewer-modal.dark .ant-alert-description {
+  color: #d1d5db !important;
+}
+
+/* Light theme enhancements for File Viewer */
+.file-viewer-modal.light .ant-modal-content {
+  background-color: #ffffff !important;
+  color: #111827 !important;
+  border-color: #e5e7eb !important;
+}
+
+.file-viewer-modal.light .ant-modal-header {
+  background-color: #ffffff !important;
+  border-bottom-color: #e5e7eb !important;
+}
+
+.file-viewer-modal.light .ant-modal-title {
+  color: #111827 !important;
+}
+
+/* Advanced Filters */
+.advanced-filters {
+  margin-bottom: 24px;
+}
+
+.advanced-filters.dark {
+  background-color: #1f1f1f;
+  border-color: #434343;
+}
+
+.advanced-filters.dark .ant-card-head {
+  background-color: #262626;
+  border-bottom-color: #434343;
+}
+
+.advanced-filters.dark .ant-card-head-title {
+  color: #ffffff;
+}
+
+.advanced-filters.dark .ant-form-item-label > label {
+  color: #d9d9d9;
+}
+
+.advanced-filters.dark .ant-input,
+.advanced-filters.dark .ant-select-selector,
+.advanced-filters.dark .ant-input-number {
+  background-color: #262626;
+  border-color: #434343;
+  color: #ffffff;
+}
+
+.advanced-filters.dark .ant-input:focus,
+.advanced-filters.dark .ant-select-focused .ant-select-selector,
+.advanced-filters.dark .ant-input-number:focus {
+  border-color: #1890ff;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+}
+
+.advanced-filters.dark .ant-input::placeholder {
+  color: #8c8c8c;
+}
+
+.advanced-filters.dark .ant-divider {
+  border-color: #434343;
+}
+
+.advanced-filters.dark .ant-divider-inner-text {
+  color: #d9d9d9;
+}
+
+/* Collapsible Advanced Filters */
+.advanced-filters-collapse {
+  margin: 16px 0;
+}
+
+.advanced-filters-collapse .ant-collapse-header {
+  font-weight: 600;
+  color: #1890ff;
+}
+
+.advanced-filters.dark .advanced-filters-collapse .ant-collapse-header {
+  color: #40a9ff;
+}
+
+.advanced-filters.dark .advanced-filters-collapse .ant-collapse-content {
+  background-color: #262626;
+  border-color: #434343;
+}
+
+.advanced-filters.dark .advanced-filters-collapse .ant-collapse-item {
+  border-color: #434343;
+}
+
+/* Save Filter Modal */
+.save-filter-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.save-filter-modal .ant-card {
+  min-width: 400px;
+  max-width: 500px;
+}
+
+/* Saved Filters */
+.saved-filters {
+  margin-top: 16px;
+}
+
+.saved-filter-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  margin-bottom: 8px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  background-color: #fafafa;
+}
+
+.saved-filter-item.dark {
+  background-color: #262626;
+  border-color: #434343;
+}
+
+.filter-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-date {
+  font-size: 12px;
+}
+
+.saved-filter-item.dark .filter-date {
+  color: #8c8c8c;
+}
