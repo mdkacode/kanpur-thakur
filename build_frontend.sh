@@ -21,9 +21,17 @@ FRONTEND_DIR="$APP_DIR/frontend"
 BUILD_DIR="$FRONTEND_DIR/build"
 BACKUP_DIR="/root/backups/frontend"
 
+# Load environment variables from config file if it exists
+if [ -f "config.env" ]; then
+    log "Loading environment configuration from config.env..."
+    export $(cat config.env | grep -v '^#' | xargs)
+fi
+
 # Get host from environment or use default
 HOST="${HOST:-157.180.70.168}"
 PROTOCOL="${PROTOCOL:-https}"
+
+log "Using configuration: HOST=$HOST, PROTOCOL=$PROTOCOL"
 
 # Function to log messages
 log() {
