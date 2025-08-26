@@ -211,8 +211,8 @@ fi
 echo ""
 log "Starting application..."
 
-# Start with PM2
-pm2 start ecosystem.config.js
+# Start with PM2 (production mode - backend only)
+pm2 start ecosystem.config.js --env production --only sheetbc-api
 
 # Save PM2 configuration
 pm2 save
@@ -221,6 +221,8 @@ pm2 save
 pm2 startup
 
 log "Application started with PM2."
+log "Backend API running on port 3000"
+log "Frontend will be served by Nginx"
 
 # Step 8: Test application
 echo ""

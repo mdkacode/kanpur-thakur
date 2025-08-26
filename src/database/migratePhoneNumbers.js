@@ -80,14 +80,47 @@ const createPhoneNumberTables = async () => {
       CREATE INDEX IF NOT EXISTS idx_phone_numbers_state ON phone_numbers(state)
     `);
 
+    // Create phone_number_generations table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS phone_number_generations (
+        id SERIAL PRIMARY KEY,
+        generation_name VARCHAR(255) NOT NULL,
+        user_id VARCHAR(100) DEFAULT 'anonymous',
+        user_name VARCHAR(255),
+        filter_criteria JSONB,
+        source_zipcodes TEXT,
+        source_timezone_ids TEXT,
+        total_records INTEGER DEFAULT 0,
+        file_size BIGINT,
+        csv_filename VARCHAR(255),
+        csv_path VARCHAR(500),
+        status VARCHAR(20) DEFAULT 'generated',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create phone_number_downloads table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS phone_number_downloads (
+        id SERIAL PRIMARY KEY,
+        generation_id INTEGER REFERENCES phone_number_generations(id) ON DELETE CASCADE,
+        downloaded_by VARCHAR(255),
+        downloaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        ip_address VARCHAR(45),
+        user_agent TEXT
+      )
+    `);
+
     console.log('✅ Phone number tables created successfully');
 
     // Verify tables exist
     const tablesResult = await db.query(`
       SELECT table_name 
       FROM information_schema.tables 
-      WHERE table_name IN ('phone_number_jobs', 'phone_numbers')
+      WHERE table_name IN ('phone_number_jobs', 'phone_numbers', 'phone_number_generations', 'phone_number_downloads')
       AND table_schema = 'public'
+      ORDER BY table_name
     `);
 
     console.log('Created tables:', tablesResult.rows.map(row => row.table_name));
