@@ -21,18 +21,6 @@ FRONTEND_DIR="$APP_DIR/frontend"
 BUILD_DIR="$FRONTEND_DIR/build"
 BACKUP_DIR="/root/backups/frontend"
 
-# Load environment variables from config file if it exists
-if [ -f "config.env" ]; then
-    log "Loading environment configuration from config.env..."
-    export $(cat config.env | grep -v '^#' | xargs)
-fi
-
-# Get host from environment or use default
-HOST="${HOST:-157.180.70.168}"
-PROTOCOL="${PROTOCOL:-https}"
-
-log "Using configuration: HOST=$HOST, PROTOCOL=$PROTOCOL"
-
 # Function to log messages
 log() {
     echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
@@ -46,6 +34,18 @@ error() {
     echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ERROR: $1${NC}"
     exit 1
 }
+
+# Load environment variables from config file if it exists
+if [ -f "config.env" ]; then
+    log "Loading environment configuration from config.env..."
+    export $(cat config.env | grep -v '^#' | xargs)
+fi
+
+# Get host from environment or use default
+HOST="${HOST:-157.180.70.168}"
+PROTOCOL="${PROTOCOL:-https}"
+
+log "Using configuration: HOST=$HOST, PROTOCOL=$PROTOCOL"
 
 # Check if running as root
 if [ "$EUID" -ne 0 ]; then
