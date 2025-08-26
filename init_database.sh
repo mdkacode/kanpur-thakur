@@ -270,7 +270,11 @@ log "Updating phone number schema..."
 
 if [ -f "src/database/updatePhoneNumberSchema.js" ]; then
     log "Running updatePhoneNumberSchema.js..."
-    node src/database/updatePhoneNumberSchema.js
+    if node src/database/updatePhoneNumberSchema.js; then
+        log "✅ Phone number schema updated successfully"
+    else
+        warn "Phone number schema update had issues, but continuing..."
+    fi
 else
     warn "updatePhoneNumberSchema.js not found, updating schema manually..."
     

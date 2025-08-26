@@ -4,6 +4,19 @@ const updatePhoneNumberSchema = async () => {
   try {
     console.log('🔧 Updating phone_numbers table schema...');
 
+    // Check if the phone_numbers table exists
+    const tableCheck = await db.query(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_name = 'phone_numbers' 
+      AND table_schema = 'public'
+    `);
+
+    if (tableCheck.rows.length === 0) {
+      console.log('ℹ️ phone_numbers table does not exist, skipping schema update');
+      return;
+    }
+
     // Check if the last_three column already exists
     const columnCheck = await db.query(`
       SELECT column_name 
@@ -25,11 +38,20 @@ const updatePhoneNumberSchema = async () => {
     }
 
     // Update the full_phone_number column to be VARCHAR(13) to handle 10-digit numbers
-    await db.query(`
-      ALTER TABLE phone_numbers 
-      ALTER COLUMN full_phone_number TYPE VARCHAR(13)
-    `);
-    console.log('✅ Updated full_phone_number column to support 10-digit numbers');
+    // Use a try-catch to handle cases where the column type is already correct
+    try {
+      await db.query(`
+        ALTER TABLE phone_numbers 
+        ALTER COLUMN full_phone_number TYPE VARCHAR(13)
+      `);
+      console.log('✅ Updated full_phone_number column to support 10-digit numbers');
+    } catch (error) {
+      if (error.code === '42710') {
+        console.log('ℹ️ full_phone_number column type is already correct');
+      } else {
+        throw error;
+      }
+    }
 
     // Add index on last_three column for better performance
     await db.query(`
