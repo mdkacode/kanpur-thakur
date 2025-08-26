@@ -21,6 +21,10 @@ FRONTEND_DIR="$APP_DIR/frontend"
 BUILD_DIR="$FRONTEND_DIR/build"
 BACKUP_DIR="/root/backups/frontend"
 
+# Get host from environment or use default
+HOST="${HOST:-157.180.70.168}"
+PROTOCOL="${PROTOCOL:-https}"
+
 # Function to log messages
 log() {
     echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')] $1${NC}"
@@ -69,13 +73,15 @@ log "✅ Dependencies installed successfully"
 
 # Step 3: Create production environment file
 log "Creating production environment configuration..."
-cat > .env.production << 'EOF'
+cat > .env.production << EOF
 # Production Environment Variables
 NODE_ENV=production
-REACT_APP_API_URL=https://157.180.70.168/api
+REACT_APP_API_URL=${PROTOCOL}://${HOST}/api
 REACT_APP_ENVIRONMENT=production
 GENERATE_SOURCEMAP=false
 EOF
+
+log "✅ Production environment file created with API URL: ${PROTOCOL}://${HOST}/api"
 
 log "✅ Production environment file created"
 
@@ -102,11 +108,10 @@ fi
 # Step 6: Optimize build for production
 log "Optimizing build for production..."
 
-# Create new build directory
-mkdir -p "$BUILD_DIR"
-
-# Copy built files
-cp -r "$FRONTEND_DIR/build"/* "$BUILD_DIR/"
+# The build directory is already created by npm run build
+# Just set proper permissions
+chown -R www-data:www-data "$BUILD_DIR"
+chmod -R 755 "$BUILD_DIR"
 
 # Set proper permissions
 chown -R www-data:www-data "$BUILD_DIR"
@@ -156,22 +161,22 @@ log "✅ SPA routing configuration created"
 # Step 8: Update Nginx configuration for React
 log "Updating Nginx configuration for React SPA..."
 
-# Create optimized Nginx configuration for React
-cat > /etc/nginx/sites-available/sheetbc << 'EOF'
+    # Create optimized Nginx configuration for React
+    cat > /etc/nginx/sites-available/sheetbc << EOF
 # SheetBC Application Configuration
 server {
     listen 80;
     listen [::]:80;
-    server_name 157.180.70.168;
+    server_name ${HOST};
     
     # Redirect HTTP to HTTPS
-    return 301 https://$server_name$request_uri;
+    return 301 ${PROTOCOL}://\$server_name\$request_uri;
 }
 
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
-    server_name 157.180.70.168;
+    server_name ${HOST};
     
     # SSL Configuration
     ssl_certificate /etc/ssl/sheetbc/sheetbc.crt;
@@ -300,13 +305,15 @@ echo "========================"
 echo "Frontend Build: $BUILD_DIR"
 echo "Nginx Config: /etc/nginx/sites-available/sheetbc"
 echo "Environment: Production"
-echo "API URL: https://157.180.70.168/api"
+echo "Host: $HOST"
+echo "Protocol: $PROTOCOL"
+echo "API URL: ${PROTOCOL}://${HOST}/api"
 echo ""
 echo "🌐 Access Information:"
 echo "====================="
-echo "Main Application: https://157.180.70.168"
-echo "API Endpoint: https://157.180.70.168/api/"
-echo "Health Check: https://157.180.70.168/health"
+echo "Main Application: ${PROTOCOL}://${HOST}"
+echo "API Endpoint: ${PROTOCOL}://${HOST}/api/"
+echo "Health Check: ${PROTOCOL}://${HOST}/health"
 echo ""
 echo "🔧 Management Commands:"
 echo "======================"
@@ -335,6 +342,6 @@ echo ""
 echo "🚀 Next Steps:"
 echo "============="
 echo "1. Start your backend: ./setup.sh"
-echo "2. Test the application: https://157.180.70.168"
+echo "2. Test the application: ${PROTOCOL}://${HOST}"
 echo "3. Check logs if needed: /root/nginx_manager.sh logs"
 echo ""
