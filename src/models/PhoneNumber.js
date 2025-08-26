@@ -388,8 +388,8 @@ class PhoneNumber {
       const query = `
         SELECT COUNT(*) as count, 
                MAX(created_at) as latest_generated,
-               job_id,
-               zip
+               MAX(job_id) as job_id,
+               MAX(zip) as zip
         FROM phone_numbers 
         WHERE full_phone_number = $1
       `;
@@ -424,11 +424,11 @@ class PhoneNumber {
         SELECT full_phone_number, 
                COUNT(*) as count,
                MAX(created_at) as latest_generated,
-               job_id,
-               zip
+               MAX(job_id) as job_id,
+               MAX(zip) as zip
         FROM phone_numbers 
         WHERE full_phone_number IN (${placeholders})
-        GROUP BY full_phone_number, job_id, zip
+        GROUP BY full_phone_number
       `;
       
       const result = await db.query(query, fullPhoneNumbers);
