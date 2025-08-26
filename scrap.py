@@ -5,8 +5,14 @@ import sys
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
+
+# Try to import webdriver-manager, but fallback gracefully if not available
+try:
+    from webdriver_manager.chrome import ChromeDriverManager
+    WEBDRIVER_MANAGER_AVAILABLE = True
+except ImportError:
+    WEBDRIVER_MANAGER_AVAILABLE = False
 
 # --- Config ---
 LOGIN_URL = "https://www.telcodata.us/login"
@@ -22,12 +28,63 @@ def log(message):
     """Write log messages to stderr so they don't interfere with CSV output"""
     print(message, file=sys.stderr)
 
-options = Options()
-options.add_argument("--headless")
-prefs = {"download.default_directory": DOWNLOAD_DIR}
-options.add_experimental_option("prefs", prefs)
+def setup_chrome_options():
+    """Setup Chrome options optimized for server environment"""
+    options = Options()
+    
+    # Basic headless mode
+    options.add_argument("--headless")
+    
+    # Server-specific options to avoid conflicts
+    options.add_argument("--no-sandbox")  # Required for root user
+    options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
+    options.add_argument("--disable-gpu")  # Disable GPU hardware acceleration
+    options.add_argument("--disable-extensions")  # Disable extensions
+    options.add_argument("--disable-plugins")  # Disable plugins
+    options.add_argument("--disable-images")  # Disable images for faster loading
+    
+    # Unique user data directory to avoid conflicts
+    import tempfile
+    temp_dir = tempfile.mkdtemp(prefix="chrome_")
+    options.add_argument(f"--user-data-dir={temp_dir}")
+    options.add_argument(f"--data-path={temp_dir}")
+    options.add_argument(f"--homedir={temp_dir}")
+    
+    # Memory and performance optimizations
+    options.add_argument("--memory-pressure-off")
+    options.add_argument("--max_old_space_size=4096")
+    options.add_argument("--disable-background-timer-throttling")
+    options.add_argument("--disable-backgrounding-occluded-windows")
+    options.add_argument("--disable-renderer-backgrounding")
+    
+    # Download preferences
+    prefs = {"download.default_directory": DOWNLOAD_DIR}
+    options.add_experimental_option("prefs", prefs)
+    
+    return options, temp_dir
 
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+# Setup Chrome options and driver
+options, temp_dir = setup_chrome_options()
+log(f"Using temporary Chrome directory: {temp_dir}")
+
+try:
+    if WEBDRIVER_MANAGER_AVAILABLE:
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        log("Chrome driver initialized with webdriver-manager")
+    else:
+        driver = webdriver.Chrome(options=options)
+        log("Chrome driver initialized with system ChromeDriver")
+except Exception as e:
+    log(f"Error initializing Chrome driver with primary method: {e}")
+    # Try fallback to system ChromeDriver
+    try:
+        driver = webdriver.Chrome(options=options)
+        log("Chrome driver initialized with system ChromeDriver fallback")
+    except Exception as e2:
+        log(f"Both ChromeDriver methods failed:")
+        log(f"  Primary: {e}")
+        log(f"  Fallback: {e2}")
+        raise Exception("ChromeDriver initialization failed")
 
 try:
     # Login
@@ -108,5 +165,18 @@ try:
             log(f"  {i+1}: {text} -> {href}")
 
 finally:
-    driver.quit()
+    try:
+        driver.quit()
+        log("Chrome driver closed")
+    except:
+        pass
+    
+    # Clean up temporary directory
+    try:
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        log(f"Cleaned up temporary directory: {temp_dir}")
+    except:
+        pass
+    
     log("Script execution completed")
