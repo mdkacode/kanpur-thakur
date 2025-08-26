@@ -139,8 +139,8 @@ sudo npm install -g pm2
 cd /root
 
 # Clone your repository
-git clone https://github.com/your-username/sheetbc.git
-cd sheetbc
+git clone https://github.com/your-username/sheetbc.git kanpur-thakur
+cd kanpur-thakur
 
 # Install dependencies
 npm install
@@ -173,12 +173,12 @@ JWT_SECRET=your_very_secure_jwt_secret_here
 JWT_EXPIRES_IN=24h
 
 # File Upload Configuration
-UPLOAD_DIR=/root/sheetbc/uploads
+UPLOAD_DIR=/root/kanpur-thakur/uploads
 MAX_FILE_SIZE=100MB
 
 # Python Environment
 PYTHON_PATH=/root/venv/bin/python
-PYTHON_SCRIPT_PATH=/root/sheetbc/scrap.py
+PYTHON_SCRIPT_PATH=/root/kanpur-thakur/scrap.py
 
 # SSL Configuration (if using Let's Encrypt)
 SSL_CERT_PATH=/etc/letsencrypt/live/yourdomain.com/fullchain.pem
@@ -188,15 +188,15 @@ SSL_KEY_PATH=/etc/letsencrypt/live/yourdomain.com/privkey.pem
 ### 5.3 Create Required Directories
 ```bash
 # Create upload directories
-mkdir -p /root/sheetbc/uploads
-mkdir -p /root/sheetbc/uploads/phone_numbers
-mkdir -p /root/sheetbc/telecare_files
-mkdir -p /root/sheetbc/logs
+mkdir -p /root/kanpur-thakur/uploads
+mkdir -p /root/kanpur-thakur/uploads/phone_numbers
+mkdir -p /root/kanpur-thakur/telecare_files
+mkdir -p /root/kanpur-thakur/logs
 
 # Set proper permissions
-chmod 755 /root/sheetbc/uploads
-chmod 755 /root/sheetbc/telecare_files
-chmod 755 /root/sheetbc/logs
+chmod 755 /root/kanpur-thakur/uploads
+chmod 755 /root/kanpur-thakur/telecare_files
+chmod 755 /root/kanpur-thakur/logs
 ```
 
 ---
@@ -206,7 +206,7 @@ chmod 755 /root/sheetbc/logs
 ### 6.1 Run Database Migrations
 ```bash
 # Navigate to application directory
-cd /root/sheetbc
+cd /root/kanpur-thakur
 
 # Run database setup scripts
 node src/database/migratePhoneNumbers.js
@@ -214,7 +214,7 @@ node src/database/createTables.js
 node src/database/updatePhoneNumberSchema.js
 
 # Import initial data if needed
-psql -h localhost -U sheetbc_user -d sheetbc_db -f src/database/initial_data.sql
+psql -h localhost -U anrag -d sheetbc_db -f src/database/initial_data.sql
 ```
 
 ### 6.2 Database Schema Files
@@ -400,7 +400,7 @@ server {
     
     # Frontend Static Files
     location / {
-        root /root/sheetbc/frontend/build;
+        root /root/kanpur-thakur/frontend/build;
         try_files $uri $uri/ /index.html;
         
         # Cache static assets
@@ -412,7 +412,7 @@ server {
     
     # File Uploads (if needed)
     location /uploads/ {
-        alias /root/sheetbc/uploads/;
+        alias /root/kanpur-thakur/uploads/;
         expires 1d;
         add_header Cache-Control "public";
     }
@@ -473,7 +473,7 @@ sudo crontab -e
 ### 9.1 Build Frontend
 ```bash
 # Navigate to frontend directory
-cd /root/sheetbc/frontend
+cd /root/kanpur-thakur/frontend
 
 # Install dependencies
 npm install
@@ -485,7 +485,7 @@ npm run build
 ### 9.2 Configure PM2
 ```bash
 # Navigate to application root
-cd /root/sheetbc
+cd /root/kanpur-thakur
 
 # Create PM2 ecosystem file
 nano ecosystem.config.js
@@ -504,9 +504,9 @@ module.exports = {
       PORT: 3000
     },
     env_file: '.env.production',
-    error_file: '/root/sheetbc/logs/err.log',
-    out_file: '/root/sheetbc/logs/out.log',
-    log_file: '/root/sheetbc/logs/combined.log',
+    error_file: '/root/kanpur-thakur/logs/err.log',
+    out_file: '/root/kanpur-thakur/logs/out.log',
+    log_file: '/root/kanpur-thakur/logs/combined.log',
     time: true,
     max_memory_restart: '1G',
     node_args: '--max-old-space-size=1024'
@@ -540,7 +540,7 @@ sudo nano /etc/logrotate.d/sheetbc
 
 **Logrotate Configuration:**
 ```
-/root/sheetbc/logs/*.log {
+/root/kanpur-thakur/logs/*.log {
     daily
     missingok
     rotate 52
@@ -615,7 +615,7 @@ mkdir -p $BACKUP_DIR
 pg_dump -h localhost -U $DB_USER $DB_NAME > $BACKUP_DIR/db_backup_$DATE.sql
 
 # Application files backup
-tar -czf $BACKUP_DIR/app_backup_$DATE.tar.gz /root/sheetbc/uploads /root/sheetbc/telecare_files
+tar -czf $BACKUP_DIR/app_backup_$DATE.tar.gz /root/kanpur-thakur/uploads /root/kanpur-thakur/telecare_files
 
 # Keep only last 7 days of backups
 find $BACKUP_DIR -name "*.sql" -mtime +7 -delete
@@ -652,7 +652,7 @@ set -e
 echo "🚀 Starting deployment..."
 
 # Navigate to application directory
-cd /root/sheetbc
+cd /root/kanpur-thakur
 
 # Pull latest changes
 git pull origin main

@@ -9,9 +9,9 @@ module.exports = {
       PORT: 3000
     },
     env_file: '.env.production',
-    error_file: '/root/sheetbc/logs/err.log',
-    out_file: '/root/sheetbc/logs/out.log',
-    log_file: '/root/sheetbc/logs/combined.log',
+    error_file: '/root/kanpur-thakur/logs/err.log',
+    out_file: '/root/kanpur-thakur/logs/out.log',
+    log_file: '/root/kanpur-thakur/logs/combined.log',
     time: true,
     max_memory_restart: '1G',
     node_args: '--max-old-space-size=1024',
@@ -44,7 +44,7 @@ module.exports = {
       host: 'localhost',
       ref: 'origin/main',
       repo: 'https://github.com/your-username/sheetbc.git',
-      path: '/root/sheetbc',
+      path: '/root/kanpur-thakur',
       'pre-deploy-local': '',
       'post-deploy': 'npm install && cd frontend && npm install && npm run build && pm2 reload ecosystem.config.js --env production',
       'pre-setup': ''

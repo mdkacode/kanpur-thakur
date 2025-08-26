@@ -10,8 +10,8 @@ echo "💾 Starting SheetBC backup..."
 # Configuration
 BACKUP_DIR="/root/backups"
 DB_NAME="sheetbc_db"
-DB_USER="sheetbc_user"
-APP_DIR="/root/sheetbc"
+DB_USER="anrag"
+APP_DIR="/root/kanpur-thakur"
 DATE=$(date +%Y%m%d_%H%M%S)
 LOG_FILE="/root/backup.log"
 

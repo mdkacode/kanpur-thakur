@@ -16,9 +16,9 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-APP_DIR="/root/sheetbc"
+APP_DIR="/root/kanpur-thakur"
 DB_NAME="sheetbc_db"
-DB_USER="sheetbc_user"
+DB_USER="anrag"
 
 # Function to check if command exists
 command_exists() {
@@ -90,8 +90,8 @@ log "Prerequisites check completed."
 echo ""
 log "Setting up database..."
 
-# Prompt for database password
-DB_PASSWORD=$(prompt "Enter database password for user '$DB_USER':")
+# Set database password
+DB_PASSWORD="Anrag@betU1"
 
 # Test database connection
 if PGPASSWORD=$DB_PASSWORD psql -h localhost -U $DB_USER -d $DB_NAME -c "SELECT 1;" >/dev/null 2>&1; then

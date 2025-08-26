@@ -8,7 +8,7 @@ set -e
 echo "🚀 Starting SheetBC deployment..."
 
 # Configuration
-APP_DIR="/root/sheetbc"
+APP_DIR="/root/kanpur-thakur"
 BACKUP_DIR="/root/backups"
 LOG_FILE="/root/deploy.log"
 DATE=$(date +%Y%m%d_%H%M%S)
