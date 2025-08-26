@@ -358,11 +358,11 @@ class PhoneNumber {
     }
   }
 
-  // Check if phone numbers exist for a specific zipcode and filter combination
+    // Check if phone numbers exist for a specific zipcode and filter combination
   static async checkExistingPhoneNumbersForZipAndFilter(zip, filterId) {
     try {
       const query = `
-        SELECT COUNT(*) as count,
+        SELECT COUNT(*) as count, 
                MAX(created_at) as latest_generated
         FROM phone_numbers 
         WHERE zip = $1 AND filter_id = $2
@@ -378,6 +378,73 @@ class PhoneNumber {
       };
     } catch (error) {
       console.error('Error checking existing phone numbers for zip and filter:', error);
+      throw error;
+    }
+  }
+
+  // Check if a specific phone number already exists in the database
+  static async checkExistingPhoneNumber(fullPhoneNumber) {
+    try {
+      const query = `
+        SELECT COUNT(*) as count, 
+               MAX(created_at) as latest_generated,
+               job_id,
+               zip
+        FROM phone_numbers 
+        WHERE full_phone_number = $1
+      `;
+      
+      const result = await db.query(query, [fullPhoneNumber]);
+      const row = result.rows[0];
+      
+      return {
+        exists: parseInt(row.count) > 0,
+        count: parseInt(row.count),
+        latest_generated: row.latest_generated,
+        job_id: row.job_id,
+        zip: row.zip
+      };
+    } catch (error) {
+      console.error('Error checking existing phone number:', error);
+      throw error;
+    }
+  }
+
+  // Check for multiple existing phone numbers (batch check)
+  static async checkExistingPhoneNumbers(phoneNumbers) {
+    try {
+      if (!phoneNumbers || phoneNumbers.length === 0) {
+        return { existing: [], new: [] };
+      }
+
+      const fullPhoneNumbers = phoneNumbers.map(pn => pn.full_phone_number);
+      const placeholders = fullPhoneNumbers.map((_, index) => `$${index + 1}`).join(', ');
+      
+      const query = `
+        SELECT full_phone_number, 
+               COUNT(*) as count,
+               MAX(created_at) as latest_generated,
+               job_id,
+               zip
+        FROM phone_numbers 
+        WHERE full_phone_number IN (${placeholders})
+        GROUP BY full_phone_number, job_id, zip
+      `;
+      
+      const result = await db.query(query, fullPhoneNumbers);
+      const existingNumbers = new Set(result.rows.map(row => row.full_phone_number));
+      
+      const existing = phoneNumbers.filter(pn => existingNumbers.has(pn.full_phone_number));
+      const newNumbers = phoneNumbers.filter(pn => !existingNumbers.has(pn.full_phone_number));
+      
+      return {
+        existing: existing,
+        new: newNumbers,
+        existingCount: existing.length,
+        newCount: newNumbers.length
+      };
+    } catch (error) {
+      console.error('Error checking existing phone numbers batch:', error);
       throw error;
     }
   }

@@ -84,14 +84,23 @@ class TelecareProcessor {
 
   // Run Python script with input CSV
   async runPythonScript(inputCsvPath, zipcode) {
+    let tempInputPath = null;
+    let tempScriptPath = null;
+    
     try {
       console.log('Running Python script...');
       
       // Ensure Python environment is set up
       await this.setupPythonEnvironment();
       
-      // Create a temporary input file for the Python script
-      const tempInputPath = path.join(__dirname, '..', '..', 'temp_input.csv');
+      // Create unique temporary file names to avoid race conditions
+      const timestamp = Date.now();
+      const randomId = Math.random().toString(36).substring(7);
+      const tempPrefix = `${zipcode}_${timestamp}_${randomId}`;
+      
+      tempInputPath = path.join(__dirname, '..', '..', `temp_input_${tempPrefix}.csv`);
+      tempScriptPath = path.join(__dirname, '..', '..', `temp_scrap_${tempPrefix}.py`);
+      
       await fs.writeFile(tempInputPath, inputCsvPath);
       
       // Modify the Python script to use our input file
@@ -101,20 +110,35 @@ class TelecareProcessor {
         `CSV_PATH = "${tempInputPath.replace(/\\/g, '/')}"`
       );
       
-      const tempScriptPath = path.join(__dirname, '..', '..', 'temp_scrap.py');
       await fs.writeFile(tempScriptPath, modifiedScript);
 
       // Run the Python script
       const result = await this.runCommand(this.pythonPath, [tempScriptPath]);
       
-      // Clean up temporary files
-      await fs.unlink(tempInputPath);
-      await fs.unlink(tempScriptPath);
-      
       return result;
     } catch (error) {
       console.error('Error running Python script:', error);
       throw error;
+    } finally {
+      // Clean up temporary files in finally block with error handling
+      await this.cleanupTempFile(tempInputPath);
+      await this.cleanupTempFile(tempScriptPath);
+    }
+  }
+
+  // Helper method to safely clean up temporary files
+  async cleanupTempFile(filePath) {
+    if (!filePath) return;
+    
+    try {
+      await fs.access(filePath); // Check if file exists
+      await fs.unlink(filePath);
+      console.log(`✅ Cleaned up temp file: ${path.basename(filePath)}`);
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        console.warn(`⚠️ Warning: Could not clean up temp file ${path.basename(filePath)}:`, error.message);
+      }
+      // ENOENT errors are expected if file was already deleted, so we ignore them
     }
   }
 
@@ -209,20 +233,40 @@ class TelecareProcessor {
         
         // Run Python script
         console.log('Running Python script...');
-        const pythonResult = await this.runPythonScript(inputCsv, zipcode);
+        let pythonResult;
+        try {
+          pythonResult = await this.runPythonScript(inputCsv, zipcode);
+        } catch (pythonError) {
+          // Handle specific ChromeDriver/Selenium errors
+          if (pythonError.message && pythonError.message.includes('ChromeDriver') || 
+              pythonError.message.includes('chromedriver') ||
+              pythonError.message.includes('WebDriverException')) {
+            throw new Error(`ChromeDriver/Selenium setup issue: ${pythonError.message}. Please ensure Chrome and ChromeDriver are properly installed and compatible with your system.`);
+          }
+          throw pythonError;
+        }
         
         // Store Python script log
         console.log('Storing Python script log...');
-        await fileStorageService.storeScriptLog(zipcode, run.run_id, pythonResult.stdout + '\n' + pythonResult.stderr);
+        const scriptLog = `STDOUT:\n${pythonResult.stdout || 'No stdout'}\n\nSTDERR:\n${pythonResult.stderr || 'No stderr'}`;
+        await fileStorageService.storeScriptLog(zipcode, run.run_id, scriptLog);
         
         // Check if Python script output contains error
         if (pythonResult.stdout && pythonResult.stdout.trim().startsWith('ERROR:')) {
           throw new Error(`Python script error: ${pythonResult.stdout.trim()}`);
         }
         
+        // Check if stderr contains critical errors
+        if (pythonResult.stderr && 
+            (pythonResult.stderr.includes('WebDriverException') || 
+             pythonResult.stderr.includes('chromedriver') ||
+             pythonResult.stderr.includes('selenium.common.exceptions'))) {
+          throw new Error(`Python script ChromeDriver error: ${pythonResult.stderr.split('\n')[0]}`);
+        }
+        
         // Check if we have output from Python script
         if (!pythonResult.stdout || !pythonResult.stdout.trim()) {
-          throw new Error('No output received from Python script');
+          throw new Error('No output received from Python script - this may be due to ChromeDriver/Selenium configuration issues');
         }
         
         // Parse output CSV
@@ -265,9 +309,10 @@ class TelecareProcessor {
         };
         
       } catch (error) {
-        // Update run status to error
+        // Update run status to error with detailed error message
         await Telecare.updateRunStatus(run.run_id, 'error', {
-          finished_at: new Date()
+          finished_at: new Date(),
+          error_message: error.message || 'Unknown error occurred'
         });
         
         throw error;
@@ -275,6 +320,16 @@ class TelecareProcessor {
       
     } catch (error) {
       console.error(`Error in telecare processing for zipcode ${zipcode}:`, error);
+      
+      // Provide more user-friendly error messages
+      if (error.message && error.message.includes('ChromeDriver')) {
+        throw new Error(`ChromeDriver compatibility issue for zipcode ${zipcode}. This is typically due to macOS ARM64 compatibility. Please check Chrome and ChromeDriver installation.`);
+      } else if (error.message && error.message.includes('Python script')) {
+        throw new Error(`Python script execution failed for zipcode ${zipcode}: ${error.message}`);
+      } else if (error.message && error.message.includes('ENOENT')) {
+        throw new Error(`File system error for zipcode ${zipcode} - this has been fixed and should not happen again.`);
+      }
+      
       throw error;
     }
   }

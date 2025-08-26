@@ -15,6 +15,7 @@ import {
   BarChartOutlined,
   SearchOutlined,
   MenuOutlined,
+  PhoneOutlined,
 } from '@ant-design/icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -27,6 +28,7 @@ import States from './States';
 import DemographicDashboard from './DemographicDashboard';
 import ComprehensiveDashboard from './ComprehensiveDashboard';
 import ViewRecordsDashboard from './ViewRecordsDashboard';
+import PhoneNumberDashboard from './PhoneNumberDashboard';
 
 const { Header, Sider, Content } = Layout;
 const { Title } = Typography;
@@ -109,6 +111,11 @@ const MainApp: React.FC = () => {
       icon: <SearchOutlined />,
       label: 'Comprehensive Dashboard',
     },
+    {
+      key: 'phone-dashboard',
+      icon: <PhoneOutlined />,
+      label: 'Phone Numbers',
+    },
   ];
 
   const handleMenuClick = ({ key }: { key: string }) => {
@@ -147,6 +154,7 @@ const MainApp: React.FC = () => {
         <Route path="/history" element={<UploadHistory />} />
         <Route path="/demographic" element={<DemographicDashboard />} />
         <Route path="/comprehensive" element={<ComprehensiveDashboard />} />
+        <Route path="/phone-dashboard" element={<PhoneNumberDashboard refreshTrigger={refreshTrigger} />} />
         <Route path="*" element={<Dashboard />} />
       </Routes>
     );

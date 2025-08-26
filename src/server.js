@@ -17,6 +17,7 @@ const demographicRecordRoutes = require('./routes/demographicRecordRoutes');
 const telecareRoutes = require('./routes/telecareRoutes');
 const filterRoutes = require('./routes/filterRoutes');
 const phoneNumberRoutes = require('./routes/phoneNumberRoutes');
+const phoneNumberGenerationRoutes = require('./routes/phoneNumberGenerationRoutes');
 const timezoneRoutes = require('./routes/timezoneRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -109,6 +110,7 @@ app.use('/api/v1/demographic', demographicUploadRoutes);
 app.use('/api/v1/telecare', telecareRoutes);
 app.use('/api/v1/filters', filterRoutes);
 app.use('/api/v1/phone-numbers', phoneNumberRoutes);
+app.use('/api/v1/phone-generations', phoneNumberGenerationRoutes);
 app.use('/api/v1/timezones', timezoneRoutes);
 
 // 404 handler

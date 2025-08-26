@@ -8,6 +8,7 @@ import { telecareApi } from '../api/telecareApi';
 import * as phoneNumberApi from '../api/phoneNumberApi';
 import { PhoneNumberJob, PhoneNumber } from '../api/phoneNumberApi';
 import FileViewerModal from './FileViewerModal';
+import PhoneGenerationModal from './PhoneGenerationModal';
 
 interface NpaNxxRecord {
   id: number;
@@ -69,6 +70,8 @@ const ComprehensiveDashboard: React.FC = () => {
   const [loadingPhoneNumberJobs, setLoadingPhoneNumberJobs] = useState(false);
   const [phoneNumberResults, setPhoneNumberResults] = useState<PhoneNumber[]>([]);
   const [loadingPhoneNumberResults, setLoadingPhoneNumberResults] = useState(false);
+  const [phoneGenerationModalVisible, setPhoneGenerationModalVisible] = useState(false);
+  const [appliedFilterConfig, setAppliedFilterConfig] = useState<any>(null);
   const { isAuthenticated } = useAuth();
   const { isDarkMode } = useTheme();
 
@@ -149,6 +152,8 @@ const ComprehensiveDashboard: React.FC = () => {
           setTimeout(() => {
             console.log('🔍 Current searchZipcodes state:', searchZipcodes);
             console.log('🔍 Auto-triggering search for zipcodes:', zipcodes);
+            // Store the applied filter config for phone generation
+            setAppliedFilterConfig(appliedFilter?.filter_config);
             // Use the zipcodes directly and apply the same filter criteria
             searchWithZipcodesAndFilter(zipcodes, appliedFilter?.filter_config);
           }, 100);
@@ -370,7 +375,8 @@ const ComprehensiveDashboard: React.FC = () => {
   };
 
   const handleProcessAndSave = async () => {
-    if (searchZipcodes.length === 0) {
+    if (searchResults.length === 0) {
+      message.warning('No filtered NPA NXX records to process. Please ensure there are records in the table.');
       return;
     }
 
@@ -379,41 +385,81 @@ const ComprehensiveDashboard: React.FC = () => {
     setError('');
 
     try {
-      // Start processing
-      setProcessingStatus('Generating CSV...');
-      const processResponse = await telecareApi.processZipcode(searchZipcodes.join(','));
+      // Get unique zipcodes from the currently filtered searchResults (displayed in table)
+      const filteredZipcodes = Array.from(new Set(searchResults.map(record => record.zip)));
+      console.log(`🔍 Processing ${searchResults.length} filtered NPA NXX records from ${filteredZipcodes.length} zipcodes:`, filteredZipcodes);
       
-      if (processResponse.success) {
-        setProcessingStatus('Processing started. Monitoring progress...');
+      setProcessingStatus(`Starting telecare processing for ${filteredZipcodes.length} zipcodes...`);
+      
+      let successCount = 0;
+      let failureCount = 0;
+      
+      // Process each zipcode individually since telecare API expects single zipcodes
+      for (const zipcode of filteredZipcodes) {
+        try {
+          setProcessingStatus(`Starting telecare processing for zipcode ${zipcode}...`);
+          console.log(`🔍 Processing zipcode: ${zipcode}`);
+          
+          const processResponse = await telecareApi.processZipcode(zipcode);
+          
+          if (processResponse.success) {
+            successCount++;
+            console.log(`✅ Started telecare processing for zipcode ${zipcode}`);
+          } else {
+            failureCount++;
+            console.error(`❌ Failed to start processing for zipcode ${zipcode}:`, processResponse.message);
+          }
+        } catch (error: any) {
+          failureCount++;
+          console.error(`❌ Error processing zipcode ${zipcode}:`, error);
+        }
         
-        // Poll for status updates
-        await pollProcessingStatus();
+        // Small delay to prevent overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      // Show summary message
+      if (successCount > 0 && failureCount === 0) {
+        setProcessingStatus('All telecare processing started successfully. Monitoring progress...');
+        message.success(`Started telecare processing for all ${successCount} zipcodes from ${searchResults.length} filtered records!`);
+        
+        // Poll for status updates using the first successfully processed zipcode
+        await pollProcessingStatus([filteredZipcodes[0]]);
+      } else if (successCount > 0) {
+        setProcessingStatus(`${successCount} telecare processes started successfully, ${failureCount} failed.`);
+        message.warning(`Started telecare processing for ${successCount} zipcodes, ${failureCount} failed. Check logs for details.`);
+        
+        // Poll for status updates using the first successfully processed zipcode
+        await pollProcessingStatus([filteredZipcodes[0]]);
       } else {
-        throw new Error(processResponse.message || 'Failed to start processing');
+        throw new Error(`Failed to start telecare processing for all ${failureCount} zipcodes.`);
       }
     } catch (error: any) {
-      setError(error.message || 'An error occurred during processing');
+      setError(error.message || 'An error occurred during telecare processing');
       setProcessingStatus('');
     } finally {
       setProcessing(false);
     }
   };
 
-  const pollProcessingStatus = async () => {
+  const pollProcessingStatus = async (zipcodesToPoll?: string[]) => {
     try {
       // Wait a bit for processing to start
       await new Promise(resolve => setTimeout(resolve, 2000));
       
+      // Use filtered zipcodes if provided, otherwise fall back to original searchZipcodes
+      const zipcodesForPolling = zipcodesToPoll || searchZipcodes;
+      
       // Get latest run
-      const latestRunResponse = await telecareApi.getLatestRun(searchZipcodes.join(','));
+      const latestRunResponse = await telecareApi.getLatestRun(zipcodesForPolling.join(','));
       if (latestRunResponse.success) {
         const run = latestRunResponse.data;
         setCurrentRun(run);
         
         if (run.status === 'processing') {
           setProcessingStatus('Running Python script...');
-          // Continue polling
-          setTimeout(pollProcessingStatus, 3000);
+          // Continue polling with the same zipcodes
+          setTimeout(() => pollProcessingStatus(zipcodesToPoll), 3000);
         } else if (run.status === 'success') {
           setProcessingStatus('Saving to database...');
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -592,12 +638,7 @@ const ComprehensiveDashboard: React.FC = () => {
 
   const handleGeneratePhoneNumbers = async () => {
     if (searchResults.length === 0) {
-      message.warning('No NPA NXX records to generate phone numbers from.');
-      return;
-    }
-
-    if (searchZipcodes.length === 0) {
-      message.warning('No zipcode selected for phone number generation.');
+      message.warning('No filtered NPA NXX records to generate phone numbers from.');
       return;
     }
 
@@ -606,12 +647,14 @@ const ComprehensiveDashboard: React.FC = () => {
     setError('');
 
     try {
-      // Generate phone numbers directly from NPA NXX records for all selected zipcodes
-      const uniqueZipcodes = Array.from(new Set(searchZipcodes));
+      // Generate phone numbers directly from filtered NPA NXX records
+      const filteredZipcodes = Array.from(new Set(searchResults.map(record => record.zip)));
+      console.log(`🔍 Generating phone numbers for ${searchResults.length} filtered NPA NXX records from ${filteredZipcodes.length} zipcodes:`, filteredZipcodes);
+      
       let successCount = 0;
       let failureCount = 0;
 
-      for (const zip of uniqueZipcodes) {
+      for (const zip of filteredZipcodes) {
         try {
           setProcessingStatus(`Generating phone numbers for ${zip}...`);
           
@@ -636,9 +679,9 @@ const ComprehensiveDashboard: React.FC = () => {
 
       // Show summary message
       if (successCount > 0 && failureCount === 0) {
-        message.success(`Phone number generation started for all ${successCount} zipcodes! Check the jobs section for progress.`);
+        message.success(`Phone number generation started for all ${successCount} zipcodes from ${searchResults.length} filtered records! Check the jobs section for progress.`);
       } else if (successCount > 0) {
-        message.warning(`Phone number generation started for ${successCount} zipcodes, ${failureCount} failed. Check the jobs section for progress.`);
+        message.warning(`Phone number generation started for ${successCount} zipcodes from ${searchResults.length} filtered records, ${failureCount} failed. Check the jobs section for progress.`);
       } else {
         message.error(`Phone number generation failed for all ${failureCount} zipcodes.`);
       }
@@ -1367,7 +1410,13 @@ const ComprehensiveDashboard: React.FC = () => {
               </div>
               
               <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                💡 <strong>Required columns:</strong> NPA, NXX, STATE. <strong>Optional:</strong> COMPANY TYPE, COMPANY, RATECENTER
+                💡 <strong>Required columns:</strong> NPA (3 digits), NXX (3 digits), THOUSANDS (0-9 or "-"), STATE (2 chars). <strong>Optional:</strong> COMPANY TYPE, COMPANY, RATECENTER
+              </div>
+              <div className={`text-xs mt-1 ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                ⚠️ <strong>Validation:</strong> Rows missing any required field will be skipped gracefully. Only valid records generate phone numbers.
+              </div>
+              <div className={`text-xs mt-1 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
+                🚫 <strong>Duplicate Prevention:</strong> Phone numbers already in database are automatically skipped.
               </div>
             </div>
           </div>
@@ -1521,21 +1570,27 @@ const ComprehensiveDashboard: React.FC = () => {
           <div className={`mb-8 p-6 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'}`}>
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-xl font-bold mb-2">Process & Save Data</h3>
+                <h3 className="text-xl font-bold mb-2">Process Filtered Records (Telecare)</h3>
                 <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                  Generate NPA/NXX CSV, run Python script, and save results to database
+                  Generate CSV from the <strong>{searchResults.length} filtered NPA NXX records</strong> displayed in the table above, run Python script (with ChromeDriver), and save results to database
                 </p>
+                <div className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+                  💡 Only the records currently shown in the table will be processed (after applying any State, Timezone, City, or Rate Center filters)
+                </div>
+                <div className={`text-xs mt-1 ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
+                  ⚠️ <strong>Requires:</strong> Python environment + ChromeDriver setup. If this fails, use "Generate Phone Numbers" below for direct generation.
+                </div>
               </div>
               <button
                 onClick={handleProcessAndSave}
-                disabled={processing}
+                disabled={processing || searchResults.length === 0}
                 className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-                  processing
+                  processing || searchResults.length === 0
                     ? 'bg-gray-400 cursor-not-allowed'
                     : 'bg-green-600 hover:bg-green-700 text-white'
                 }`}
               >
-                🚀 Process & Save (CSV → Python → DB)
+                🚀 Process {searchResults.length} Records
               </button>
             </div>
           </div>
@@ -1665,11 +1720,21 @@ const ComprehensiveDashboard: React.FC = () => {
                 <Button
                   type="primary"
                   icon={<PhoneOutlined />}
+                  onClick={() => setPhoneGenerationModalVisible(true)}
+                  disabled={searchResults.length === 0}
+                  size="large"
+                >
+                  Generate Phone Numbers ({searchResults.length} records)
+                </Button>
+                <Button
+                  type="default"
+                  icon={<PhoneOutlined />}
                   onClick={handleGeneratePhoneNumbers}
                   loading={processing}
                   disabled={processing}
+                  size="small"
                 >
-                  Generate Phone Numbers
+                  Quick Generate (Legacy)
                 </Button>
                 <Button
                   icon={<DownloadOutlined />}
@@ -1692,6 +1757,19 @@ const ComprehensiveDashboard: React.FC = () => {
                 >
                   Export CSV
                 </Button>
+              </div>
+            </div>
+            
+            {/* Helpful Information */}
+            <div className={`mb-4 p-3 rounded-lg ${isDarkMode ? 'bg-green-800 text-green-200' : 'bg-green-50 text-green-700'} border ${isDarkMode ? 'border-green-700' : 'border-green-200'}`}>
+              <div className="text-sm">
+                ✅ <strong>Direct Phone Generation:</strong> These buttons generate phone numbers directly from NPA NXX records - no Python/ChromeDriver required! Works independently of telecare processing.
+              </div>
+              <div className="text-xs mt-2 opacity-80">
+                🔍 <strong>Validation:</strong> Only records with valid NPA (3 digits), NXX (3 digits), and STATE (2 chars) will generate phone numbers. Invalid records are gracefully skipped.
+              </div>
+              <div className="text-xs mt-1 opacity-80">
+                🚫 <strong>Duplicate Prevention:</strong> Phone numbers that already exist in the database are automatically skipped to avoid duplicates.
               </div>
             </div>
 
@@ -1998,6 +2076,20 @@ const ComprehensiveDashboard: React.FC = () => {
           hasOutput={selectedRun.status === 'success' && selectedRun.row_count > 0}
         />
       )}
+
+      {/* Phone Generation Modal */}
+      <PhoneGenerationModal
+        visible={phoneGenerationModalVisible}
+        onClose={() => setPhoneGenerationModalVisible(false)}
+        onSuccess={(generation) => {
+          console.log('🎉 Phone generation successful:', generation);
+          // Optionally refresh phone number jobs or redirect to phone dashboard
+          message.success('Phone numbers generated successfully! Check the Phone Dashboard for download.');
+        }}
+        initialFilters={appliedFilterConfig}
+        sourceZipcodes={searchZipcodes}
+        npaRecordsCount={searchResults.length}
+      />
     </div>
   );
 };

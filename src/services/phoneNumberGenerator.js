@@ -64,22 +64,28 @@ class PhoneNumberGenerator {
     return this.stateToTimezone[state] || 'America/New_York'; // Default to EST
   }
 
-  // Validate NPA, NXX, and THOUSANDS
+  // Validate NPA, NXX, and THOUSANDS - ALL THREE ARE REQUIRED
   validatePhoneComponents(npa, nxx, thousands) {
-    if (!npa || !nxx) {
-      return { valid: false, error: 'NPA and NXX are required' };
+    // Check if all three required fields are present
+    if (!npa || !nxx || !thousands) {
+      return { 
+        valid: false, 
+        error: `Missing required fields: NPA=${!!npa}, NXX=${!!nxx}, THOUSANDS=${!!thousands}` 
+      };
     }
 
+    // Validate NPA format (exactly 3 digits)
     if (npa.length !== 3 || !/^\d{3}$/.test(npa)) {
       return { valid: false, error: 'NPA must be exactly 3 digits' };
     }
 
+    // Validate NXX format (exactly 3 digits)
     if (nxx.length !== 3 || !/^\d{3}$/.test(nxx)) {
       return { valid: false, error: 'NXX must be exactly 3 digits' };
     }
 
-    // THOUSANDS should be a single digit (0-9) or "-" for default
-    if (thousands && thousands !== '-' && (thousands.length !== 1 || !/^\d$/.test(thousands))) {
+    // Validate THOUSANDS format (single digit 0-9 or "-" for default)
+    if (thousands !== '-' && (thousands.length !== 1 || !/^\d$/.test(thousands))) {
       return { valid: false, error: 'THOUSANDS must be exactly 1 digit (0-9) or "-"' };
     }
 
@@ -202,10 +208,18 @@ class PhoneNumberGenerator {
           const company = payload.COMPANY;
           const ratecenter = payload.RATECENTER;
 
-          // Validate required fields
-          if (!npa || !nxx || !state) {
-            console.warn(`⚠️ Skipping row with missing required fields:`, payload);
+          // Validate ALL THREE required fields (NPA, NXX, THOUSANDS)
+          const validation = this.validatePhoneComponents(npa, nxx, thousands);
+          if (!validation.valid) {
+            console.warn(`⚠️ Skipping row with invalid phone components: ${validation.error}`, payload);
             totalFailed += 1000; // Count as failed since we can't generate numbers
+            continue;
+          }
+
+          // Also validate state is present
+          if (!state) {
+            console.warn(`⚠️ Skipping row with missing STATE:`, payload);
+            totalFailed += 1000;
             continue;
           }
 
@@ -215,8 +229,19 @@ class PhoneNumberGenerator {
           );
 
           if (phoneNumbers.length > 0) {
-            allPhoneNumbers.push(...phoneNumbers);
-            totalGenerated += phoneNumbers.length;
+            // Check for duplicates before adding
+            const duplicateCheck = await PhoneNumber.checkExistingPhoneNumbers(phoneNumbers);
+            
+            if (duplicateCheck.newCount > 0) {
+              allPhoneNumbers.push(...duplicateCheck.new);
+              totalGenerated += duplicateCheck.newCount;
+              
+              if (duplicateCheck.existingCount > 0) {
+                console.log(`⚠️ Skipped ${duplicateCheck.existingCount} duplicate phone numbers for NPA-NXX ${npa}-${nxx}`);
+              }
+            } else {
+              console.log(`⚠️ All ${phoneNumbers.length} phone numbers for NPA-NXX ${npa}-${nxx} already exist, skipping`);
+            }
             
             // Update progress every 1000 numbers
             if (totalGenerated % 1000 === 0) {
@@ -450,10 +475,21 @@ class PhoneNumberGenerator {
           const city = record.city;
           const ratecenter = record.rc;
 
-          // Validate required fields
+          // For direct NPA NXX generation, we generate for all thousands digits (0-9)
+          // So we only need to validate NPA and NXX, and ensure state is present
           if (!npa || !nxx || !state) {
             console.warn(`⚠️ Skipping record with missing required fields:`, record);
             totalFailed += 10000; // Each NPA-NXX generates 10,000 numbers (10 thousands digits × 1000 each)
+            continue;
+          }
+
+          // Validate NPA and NXX format
+          const npaValidation = /^\d{3}$/.test(npa);
+          const nxxValidation = /^\d{3}$/.test(nxx);
+          
+          if (!npaValidation || !nxxValidation) {
+            console.warn(`⚠️ Skipping record with invalid NPA/NXX format: NPA=${npa} (valid: ${npaValidation}), NXX=${nxx} (valid: ${nxxValidation})`, record);
+            totalFailed += 10000;
             continue;
           }
 
@@ -464,8 +500,19 @@ class PhoneNumberGenerator {
             );
 
             if (phoneNumbers.length > 0) {
-              allPhoneNumbers.push(...phoneNumbers);
-              totalGenerated += phoneNumbers.length;
+              // Check for duplicates before adding
+              const duplicateCheck = await PhoneNumber.checkExistingPhoneNumbers(phoneNumbers);
+              
+              if (duplicateCheck.newCount > 0) {
+                allPhoneNumbers.push(...duplicateCheck.new);
+                totalGenerated += duplicateCheck.newCount;
+                
+                if (duplicateCheck.existingCount > 0) {
+                  console.log(`⚠️ Skipped ${duplicateCheck.existingCount} duplicate phone numbers for NPA-NXX ${npa}-${nxx} thousands ${thousandsDigit}`);
+                }
+              } else {
+                console.log(`⚠️ All ${phoneNumbers.length} phone numbers for NPA-NXX ${npa}-${nxx} thousands ${thousandsDigit} already exist, skipping`);
+              }
               
               // Update progress every 1000 numbers
               if (totalGenerated % 1000 === 0) {
@@ -607,10 +654,18 @@ class PhoneNumberGenerator {
           // Debug: Log extracted values
           console.log(`📊 Extracted values: NPA=${npa}, NXX=${nxx}, STATE=${state}, THOUSANDS=${thousands}`);
 
-          // Validate required fields
-          if (!npa || !nxx || !state) {
-            console.warn(`⚠️ Skipping row with missing required fields:`, row);
+          // Validate ALL THREE required fields (NPA, NXX, THOUSANDS)
+          const validation = this.validatePhoneComponents(npa, nxx, thousands);
+          if (!validation.valid) {
+            console.warn(`⚠️ Skipping row with invalid phone components: ${validation.error}`, row);
             totalFailed += 1000; // Count as failed since we can't generate numbers
+            continue;
+          }
+
+          // Also validate state is present and has correct format
+          if (!state) {
+            console.warn(`⚠️ Skipping row with missing STATE:`, row);
+            totalFailed += 1000;
             continue;
           }
 
@@ -627,8 +682,19 @@ class PhoneNumberGenerator {
           );
 
           if (phoneNumbers.length > 0) {
-            allPhoneNumbers.push(...phoneNumbers);
-            totalGenerated += phoneNumbers.length;
+            // Check for duplicates before adding
+            const duplicateCheck = await PhoneNumber.checkExistingPhoneNumbers(phoneNumbers);
+            
+            if (duplicateCheck.newCount > 0) {
+              allPhoneNumbers.push(...duplicateCheck.new);
+              totalGenerated += duplicateCheck.newCount;
+              
+              if (duplicateCheck.existingCount > 0) {
+                console.log(`⚠️ Skipped ${duplicateCheck.existingCount} duplicate phone numbers for NPA-NXX ${npa}-${nxx}`);
+              }
+            } else {
+              console.log(`⚠️ All ${phoneNumbers.length} phone numbers for NPA-NXX ${npa}-${nxx} already exist, skipping`);
+            }
             
             // Update progress every 1000 numbers
             if (totalGenerated % 1000 === 0) {
