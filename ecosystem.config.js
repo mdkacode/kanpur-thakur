@@ -1,75 +1,82 @@
+// ecosystem.config.js
 module.exports = {
   apps: [
-    // Backend API Service
+    // =========================
+    // Backend API (production)
+    // =========================
     {
       name: 'sheetbc-api',
       script: 'src/server.js',
-      instances: 'max',
+      cwd: '/root/kanpur-thakur',
+
+      // Be careful with too many Chrome headless instances; start small and scale.
+      instances: 2,                 // was 'max'; use 1-2 unless you really need more
       exec_mode: 'cluster',
-      env: {
-        NODE_ENV: 'production',
-        PORT: 3000
-      },
-      env_file: '.env.production',
+
+      // Logs
       error_file: '/root/kanpur-thakur/logs/api-err.log',
-      out_file: '/root/kanpur-thakur/logs/api-out.log',
-      log_file: '/root/kanpur-thakur/logs/api-combined.log',
+      out_file:   '/root/kanpur-thakur/logs/api-out.log',
+      log_file:   '/root/kanpur-thakur/logs/api-combined.log',
+      merge_logs: true,
       time: true,
+      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+
+      // Resources
       max_memory_restart: '1G',
       node_args: '--max-old-space-size=1024',
-      
-      // Restart policy
+
+      // Stability
       autorestart: true,
       watch: false,
       max_restarts: 10,
       min_uptime: '10s',
-      
-      // Logging
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
-      merge_logs: true,
-      
-      // Health check
-      health_check_grace_period: 3000,
-      health_check_fatal_exceptions: true,
-      
-      // Environment variables
+      exp_backoff_restart_delay: 2000,
+
+      // Base env
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3000,
+
+        // >>> Python & Selenium wiring <<<
+        PYTHON_BIN: '/root/kanpur-thakur/venv/bin/python',
+        CHROME_BIN: '/usr/bin/google-chrome',     // or /usr/bin/google-chrome-stable
+        CHROMEDRIVER_PATH: '/usr/bin/chromedriver',
+        PYTHONUNBUFFERED: '1'
+      },
+
+      // Load additional secrets/config
+      env_file: '.env.production',
+
+      // Optional per-mode overrides
       env_production: {
         NODE_ENV: 'production',
         PORT: 3000
       }
     },
-    
-    // Frontend Development Server (Optional - for development)
+
+    // =========================
+    // Frontend DEV server
+    // (do NOT run in production)
+    // =========================
     {
       name: 'sheetbc-frontend-dev',
       script: 'npm',
       args: 'start',
-      cwd: './frontend',
+      cwd: '/root/kanpur-thakur/frontend',
       instances: 1,
       exec_mode: 'fork',
-      env: {
-        NODE_ENV: 'development',
-        PORT: 3001,
-        REACT_APP_API_URL: 'http://localhost:3000'
-      },
-      error_file: '/root/kanpur-thakur/logs/frontend-err.log',
-      out_file: '/root/kanpur-thakur/logs/frontend-out.log',
-      log_file: '/root/kanpur-thakur/logs/frontend-combined.log',
-      time: true,
-      max_memory_restart: '512M',
-      
-      // Restart policy
       autorestart: true,
       watch: false,
-      max_restarts: 5,
-      min_uptime: '10s',
-      
-      // Logging
-      log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+
+      // Logs
+      error_file: '/root/kanpur-thakur/logs/frontend-err.log',
+      out_file:   '/root/kanpur-thakur/logs/frontend-out.log',
+      log_file:   '/root/kanpur-thakur/logs/frontend-combined.log',
       merge_logs: true,
-      
-      // Only start in development mode
-      env_development: {
+      time: true,
+
+      // Only meant for development runs
+      env: {
         NODE_ENV: 'development',
         PORT: 3001,
         REACT_APP_API_URL: 'http://localhost:3000'
@@ -77,7 +84,7 @@ module.exports = {
     }
   ],
 
-  // Deployment configuration
+  // PM2 deploy (optional)
   deploy: {
     production: {
       user: 'root',
@@ -85,9 +92,8 @@ module.exports = {
       ref: 'origin/main',
       repo: 'https://github.com/your-username/sheetbc.git',
       path: '/root/kanpur-thakur',
-      'pre-deploy-local': '',
-      'post-deploy': 'npm install && cd frontend && npm install && npm run build && pm2 reload ecosystem.config.js --env production',
-      'pre-setup': ''
+      'post-deploy':
+        'npm install && cd frontend && npm install && npm run build && pm2 reload ecosystem.config.js --env production'
     }
   }
 };
