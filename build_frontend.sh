@@ -103,24 +103,24 @@ fi
 
 log "✅ React app built successfully"
 
-# Step 5: Backup existing build
-log "Backing up existing build..."
+# Step 5: Backup existing build (only if it exists)
+log "Checking for existing build..."
 mkdir -p "$BACKUP_DIR"
 if [ -d "$BUILD_DIR" ]; then
+    log "Backing up existing build..."
     if [ -d "$BACKUP_DIR/previous_build" ]; then
         rm -rf "$BACKUP_DIR/previous_build"
     fi
     mv "$BUILD_DIR" "$BACKUP_DIR/previous_build.$(date +%Y%m%d_%H%M%S)"
+    log "✅ Previous build backed up"
+else
+    log "No existing build found, proceeding with new build"
 fi
 
 # Step 6: Optimize build for production
 log "Optimizing build for production..."
 
-# The build directory is already created by npm run build
-# Just set proper permissions
-chown -R www-data:www-data "$BUILD_DIR"
-chmod -R 755 "$BUILD_DIR"
-
+# The build directory is created by npm run build
 # Set proper permissions
 chown -R www-data:www-data "$BUILD_DIR"
 chmod -R 755 "$BUILD_DIR"
@@ -129,6 +129,12 @@ log "✅ Build optimized and permissions set"
 
 # Step 7: Create .htaccess for SPA routing (if needed)
 log "Creating SPA routing configuration..."
+
+# Ensure build directory exists
+if [ ! -d "$BUILD_DIR" ]; then
+    error "Build directory not found: $BUILD_DIR. Please ensure npm run build completed successfully."
+fi
+
 cat > "$BUILD_DIR/.htaccess" << 'EOF'
 # React Router SPA Configuration
 <IfModule mod_rewrite.c>
@@ -300,8 +306,13 @@ echo ""
 echo "📊 Build Information:"
 echo "===================="
 echo "Build Directory: $BUILD_DIR"
-echo "Build Size: $(du -sh $BUILD_DIR | cut -f1)"
-echo "Files Count: $(find $BUILD_DIR -type f | wc -l)"
+if [ -d "$BUILD_DIR" ]; then
+    echo "Build Size: $(du -sh $BUILD_DIR | cut -f1)"
+    echo "Files Count: $(find $BUILD_DIR -type f | wc -l)"
+else
+    echo "Build Size: N/A (directory not found)"
+    echo "Files Count: N/A (directory not found)"
+fi
 echo ""
 
 # Step 11: Show final information
