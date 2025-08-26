@@ -55,13 +55,33 @@ class DemographicRecord {
       let value = record[column] || '';
       
       // Clean up common data issues
-      if (value === '-$1' || value === '-1') {
+              if (value === '-1') {
         value = '';
       }
       
       // Remove currency symbols and commas from numeric fields
       if (typeof value === 'string' && (value.includes('$') || value.includes(','))) {
         value = value.replace(/[$,]/g, '');
+      }
+      
+      // Handle integer columns - convert empty strings to null for integer fields
+      if (['timezone_id', 'population'].includes(column)) {
+        if (value === '' || value === null || value === undefined) {
+          return null;
+        }
+        // Try to convert to integer
+        const numValue = parseInt(value);
+        return isNaN(numValue) ? null : numValue;
+      }
+      
+      // Handle numeric columns - convert empty strings to null
+      if (['median_age', 'median_income'].includes(column)) {
+        if (value === '' || value === null || value === undefined) {
+          return null;
+        }
+        // Try to convert to numeric
+        const numValue = parseFloat(value);
+        return isNaN(numValue) ? null : numValue;
       }
       
       return value;
@@ -129,21 +149,19 @@ class DemographicRecord {
                tz.abbreviation_daylight,
                tz.utc_offset_standard,
                tz.utc_offset_daylight,
-               tz.observes_dst,
-               tz.description as timezone_description,
-               tz.states as timezone_states
+               tz.observes_dst
         FROM demographic_records dr
         LEFT JOIN timezones tz ON dr.timezone_id = tz.id
       `;
       let countQuery = 'SELECT COUNT(*) FROM demographic_records dr LEFT JOIN timezones tz ON dr.timezone_id = tz.id';
-      let zipcodesQuery = 'SELECT DISTINCT dr.zipcode FROM demographic_records dr LEFT JOIN timezones tz ON dr.timezone_id = tz.id';
+      let zipcodesQuery = 'SELECT DISTINCT dr.zip_code FROM demographic_records dr LEFT JOIN timezones tz ON dr.timezone_id = tz.id';
       let whereConditions = [];
       let values = [];
       let valueIndex = 1;
 
       // Dynamic search across searchable columns
       if (search) {
-        const searchableColumns = ['zipcode', 'state', 'county', 'city'];
+        const searchableColumns = ['zip_code', 'state_code', 'county', 'city'];
         const searchConditions = searchableColumns
           .filter(col => columns.includes(col))
           .map(col => `dr.${col} ILIKE $${valueIndex}`);
@@ -365,7 +383,7 @@ class DemographicRecord {
       query += ` ORDER BY ${validSortBy} ${sortOrder} LIMIT $${valueIndex} OFFSET $${valueIndex + 1}`;
       
       // Add sorting to zipcodes query but NO pagination
-      zipcodesQuery += ` ORDER BY zipcode`;
+      zipcodesQuery += ` ORDER BY zip_code`;
       
       values.push(limitNum, offset);
 
@@ -376,8 +394,8 @@ class DemographicRecord {
         db.query(zipcodesQuery, values.slice(0, -2)) // Use same values but without pagination
       ]);
 
-      // Extract unique zipcodes from filtered results (all matching records, not just current page)
-      const filteredZipcodes = zipcodesResult.rows.map(row => row.zipcode).sort();
+              // Extract unique zipcodes from filtered results (all matching records, not just current page)
+        const filteredZipcodes = zipcodesResult.rows.map(row => row.zip_code).sort();
       console.log('🔍 Zipcodes query returned rows:', zipcodesResult.rows.length);
       console.log('🔍 All matching zipcodes:', filteredZipcodes);
 
@@ -412,7 +430,7 @@ class DemographicRecord {
   // Dynamic find by zipcode
   static async findByZipcode(zipcode) {
     try {
-      const query = 'SELECT * FROM demographic_records WHERE zipcode = $1';
+      const query = 'SELECT * FROM demographic_records WHERE zip_code = $1';
       const result = await db.query(query, [zipcode]);
       return result.rows[0] || null;
     } catch (error) {
@@ -481,11 +499,20 @@ class DemographicRecord {
       numericFields.forEach(field => {
         if (columns.includes(field)) {
           statsQuery += `,
-            AVG(CASE WHEN ${field} != '-$1' AND ${field} != '' AND ${field} ~ '^[0-9.-]+$' 
+            AVG(CASE WHEN ${field} IS NOT NULL 
+                     AND ${field} != '' 
+                     AND ${field} != '-1' 
+                     AND ${field} ~ '^[0-9]+(\\.[0-9]+)?$'
                      THEN CAST(${field} AS DECIMAL) END) as avg_${field},
-            MIN(CASE WHEN ${field} != '-$1' AND ${field} != '' AND ${field} ~ '^[0-9.-]+$' 
+            MIN(CASE WHEN ${field} IS NOT NULL 
+                     AND ${field} != '' 
+                     AND ${field} != '-1' 
+                     AND ${field} ~ '^[0-9]+(\\.[0-9]+)?$'
                      THEN CAST(${field} AS DECIMAL) END) as min_${field},
-            MAX(CASE WHEN ${field} != '-$1' AND ${field} != '' AND ${field} ~ '^[0-9.-]+$' 
+            MAX(CASE WHEN ${field} IS NOT NULL 
+                     AND ${field} != '' 
+                     AND ${field} != '-1' 
+                     AND ${field} ~ '^[0-9]+(\\.[0-9]+)?$'
                      THEN CAST(${field} AS DECIMAL) END) as max_${field}`;
         }
       });
@@ -601,7 +628,6 @@ class DemographicRecord {
               FROM demographic_records 
               WHERE ${field} IS NOT NULL 
               AND ${field} != '' 
-              AND ${field} != '-$1' 
               AND ${field} != '-1'
               AND ${field} NOT LIKE '%N/A%'
               AND ${field} NOT LIKE '%Unknown%'
@@ -653,7 +679,6 @@ class DemographicRecord {
               FROM demographic_records 
               WHERE ${field} IS NOT NULL 
               AND ${field} != '' 
-              AND ${field} != '-$1' 
               AND ${field} != '-1'
               AND ${field} NOT LIKE '%N/A%'
               AND ${field} NOT LIKE '%Unknown%'
@@ -713,7 +738,6 @@ class DemographicRecord {
               FROM demographic_records 
               WHERE ${field} IS NOT NULL 
               AND ${field} != '' 
-              AND ${field} != '-$1' 
               AND ${field} != '-1'
               AND ${field} NOT LIKE '%N/A%'
               AND ${field} NOT LIKE '%Unknown%'

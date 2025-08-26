@@ -208,7 +208,7 @@ class TimezoneController {
         display_name: tz.display_name,
         abbreviation: tz.observes_dst && Timezone.isDaylightSavingTime(new Date()) ? 
           tz.abbreviation_daylight : tz.abbreviation_standard,
-        states: tz.states
+        states: null
       }));
       
       res.json({

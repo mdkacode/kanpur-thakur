@@ -3,6 +3,7 @@ const csv = require('csv-parser');
 const path = require('path');
 const Record = require('../models/Record');
 const FileUpload = require('../models/FileUpload');
+const timezoneResolver = require('./timezoneResolver');
 
 class FileProcessor {
   constructor() {
@@ -129,6 +130,7 @@ class FileProcessor {
       const state_code = (row.STATE || row.state || row.STATE_CODE || row.state_code || row[3] || '').toString().trim().toUpperCase();
       const city = (row.CITY || row.city || row[4] || '').toString().trim();
       const rc = (row.RC || row.rc || row[5] || '').toString().trim();
+      const thousands = (row.THOUSANDS || row.thousands || row[6] || '').toString().trim();
 
       // Check if any required field is empty
       if (!npa || !nxx || !zip || !state_code || !city || !rc) {
@@ -136,7 +138,7 @@ class FileProcessor {
         return null;
       }
 
-      return { npa, nxx, zip, state_code, city, rc };
+      return { npa, nxx, zip, state_code, city, county: rc, thousands };
     } catch (error) {
       console.error('Error parsing CSV row:', error);
       return null;
@@ -154,6 +156,7 @@ class FileProcessor {
       }
 
       const [npa, nxx, zip, state_code, city, rc] = parts.map(part => part.trim());
+      const thousands = parts.length > 6 ? parts[6].trim() : '';
 
       // Check if any required field is empty
       if (!npa || !nxx || !zip || !state_code || !city || !rc) {
@@ -164,7 +167,7 @@ class FileProcessor {
       // Convert state_code to uppercase
       const normalizedStateCode = state_code.toUpperCase();
 
-      return { npa, nxx, zip, state_code: normalizedStateCode, city, rc };
+      return { npa, nxx, zip, state_code: normalizedStateCode, city, county: rc, thousands };
     } catch (error) {
       console.error('Error parsing TXT line:', error);
       return null;
@@ -229,9 +232,9 @@ class FileProcessor {
           return false;
         }
         
-        // Validate RC (non-empty string)
-        if (!record.rc || record.rc.trim().length === 0) {
-          console.log(`Invalid RC: ${record.rc}`);
+        // Validate RC/County (non-empty string)
+        if (!record.county || record.county.trim().length === 0) {
+          console.log(`Invalid RC/County: ${record.county}`);
           return false;
         }
         

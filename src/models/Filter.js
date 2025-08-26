@@ -31,7 +31,7 @@ class Filter {
     try {
       let query = `
         SELECT * FROM user_filters 
-        WHERE user_id = $1 AND is_active = true
+        WHERE (user_id = $1 OR (user_id IS NULL AND $1 IS NULL)) AND is_active = true
       `;
       let values = [userId];
       

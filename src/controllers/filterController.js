@@ -5,7 +5,7 @@ class FilterController {
   static async createFilter(req, res) {
     try {
       const { name, filter_type, filter_config } = req.body;
-      const user_id = req.user?.id || 'anonymous'; // Get from auth middleware
+      const user_id = req.user?.id || null; // Get from auth middleware, use null for anonymous users
       
       if (!name || !filter_config) {
         return res.status(400).json({
@@ -47,7 +47,7 @@ class FilterController {
   // Get all filters for a user
   static async getUserFilters(req, res) {
     try {
-      const user_id = req.user?.id || 'anonymous';
+      const user_id = req.user?.id || null;
       const { filter_type } = req.query;
 
       const result = await Filter.getFiltersByUser(user_id, filter_type);
@@ -215,10 +215,10 @@ class FilterController {
 
       // Process basic filters (multiselect fields)
       const filters = {};
-      if (filterConfig.zipcode) {
-        filters.zipcode = Array.isArray(filterConfig.zipcode) 
-          ? filterConfig.zipcode 
-          : filterConfig.zipcode.split(',').map(s => s.trim()).filter(s => s);
+      if (filterConfig.zip_code) {
+        filters.zip_code = Array.isArray(filterConfig.zip_code) 
+          ? filterConfig.zip_code 
+          : filterConfig.zip_code.split(',').map(s => s.trim()).filter(s => s);
       }
       if (filterConfig.state) {
         filters.state = Array.isArray(filterConfig.state) 

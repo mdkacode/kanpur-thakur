@@ -324,7 +324,7 @@ const FileViewerModal: React.FC<FileViewerModalProps> = ({
           <div className="flex items-center space-x-4 text-sm">
             <div>
               <span className={`font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Run ID:</span>
-              <span className={`ml-2 font-mono ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>{runId.slice(0, 8)}...</span>
+              <span className={`ml-2 font-mono ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>{String(runId || '').slice(0, 8)}...</span>
             </div>
             <div>
               <span className={`font-medium ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>Zipcode:</span>

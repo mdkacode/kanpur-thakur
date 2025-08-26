@@ -229,7 +229,7 @@ class TelecareProcessor {
         
         // Store input CSV file
         console.log('Storing input CSV file...');
-        const inputFileResult = await fileStorageService.storeInputFile(zipcode, run.run_id, inputCsv, inputFilename);
+        const inputFileResult = await fileStorageService.storeInputFile(zipcode, run.id, inputCsv, inputFilename);
         
         // Run Python script
         console.log('Running Python script...');
@@ -249,7 +249,7 @@ class TelecareProcessor {
         // Store Python script log
         console.log('Storing Python script log...');
         const scriptLog = `STDOUT:\n${pythonResult.stdout || 'No stdout'}\n\nSTDERR:\n${pythonResult.stderr || 'No stderr'}`;
-        await fileStorageService.storeScriptLog(zipcode, run.run_id, scriptLog);
+        await fileStorageService.storeScriptLog(zipcode, run.id, scriptLog);
         
         // Check if Python script output contains error
         if (pythonResult.stdout && pythonResult.stdout.trim().startsWith('ERROR:')) {
@@ -277,15 +277,15 @@ class TelecareProcessor {
         let outputFileResult = null;
         if (pythonResult.stdout && pythonResult.stdout.trim()) {
           console.log('Storing output CSV file...');
-          outputFileResult = await fileStorageService.storeOutputFile(zipcode, run.run_id, pythonResult.stdout, outputCsvName);
+          outputFileResult = await fileStorageService.storeOutputFile(zipcode, run.id, pythonResult.stdout, outputCsvName);
         }
         
         // Save output rows to database
         console.log('Saving output rows to database...');
-        await Telecare.saveOutputRows(run.run_id, zipcode, outputRows);
+        await Telecare.saveOutputRows(run.id, zipcode, outputRows);
         
         // Update run status to success
-        await Telecare.updateRunStatus(run.run_id, 'success', {
+        await Telecare.updateRunStatus(run.id, 'success', {
           row_count: outputRows.length,
           finished_at: new Date(),
           file_refs: {
@@ -300,7 +300,7 @@ class TelecareProcessor {
         
         return {
           success: true,
-          run_id: run.run_id,
+          run_id: run.id,
           input_csv: inputCsv,
           input_filename: inputCsvName,
           output_rows: outputRows,
@@ -310,7 +310,7 @@ class TelecareProcessor {
         
       } catch (error) {
         // Update run status to error with detailed error message
-        await Telecare.updateRunStatus(run.run_id, 'error', {
+        await Telecare.updateRunStatus(run.id, 'error', {
           finished_at: new Date(),
           error_message: error.message || 'Unknown error occurred'
         });
@@ -343,8 +343,8 @@ class TelecareProcessor {
       }
       
       return {
-        run_id: run.run_id,
-        zip: run.zip,
+        run_id: run.id,
+        zip: run.zipcode,
         status: run.status,
         started_at: run.started_at,
         finished_at: run.finished_at,

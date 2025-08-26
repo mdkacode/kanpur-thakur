@@ -68,9 +68,21 @@ class TelecareController {
       
       const status = await telecareProcessor.getProcessingStatus(run_id);
       
+      // Map database response to frontend expected format
+      const mappedStatus = {
+        run_id: status.run_id,
+        zip: status.zip,
+        status: status.status,
+        started_at: status.started_at,
+        finished_at: status.finished_at,
+        row_count: status.row_count,
+        input_csv_name: status.input_csv_name,
+        output_csv_name: status.output_csv_name
+      };
+      
       res.json({
         success: true,
-        data: status
+        data: mappedStatus
       });
 
     } catch (error) {
@@ -99,9 +111,25 @@ class TelecareController {
 
       const runs = await Telecare.getRunsByZip(zipcode, parseInt(limit));
       
+      // Map database response to frontend expected format
+      const mappedRuns = runs.map(run => ({
+        run_id: run.id,
+        zip: run.zipcode,
+        input_csv_name: run.input_csv_name,
+        output_csv_name: run.output_csv_name,
+        row_count: run.row_count,
+        status: run.status,
+        script_version: run.script_version,
+        started_at: run.started_at,
+        finished_at: run.finished_at,
+        file_refs: run.file_refs,
+        created_at: run.created_at,
+        updated_at: run.updated_at
+      }));
+      
       res.json({
         success: true,
-        data: runs,
+        data: mappedRuns,
         pagination: {
           total: runs.length,
           limit: parseInt(limit)
@@ -335,9 +363,25 @@ class TelecareController {
         });
       }
 
+      // Map database response to frontend expected format
+      const mappedRun = {
+        run_id: run.id,
+        zip: run.zipcode,
+        input_csv_name: run.input_csv_name,
+        output_csv_name: run.output_csv_name,
+        row_count: run.row_count,
+        status: run.status,
+        script_version: run.script_version,
+        started_at: run.started_at,
+        finished_at: run.finished_at,
+        file_refs: run.file_refs,
+        created_at: run.created_at,
+        updated_at: run.updated_at
+      };
+
       res.json({
         success: true,
-        data: run
+        data: mappedRun
       });
 
     } catch (error) {
@@ -368,8 +412,8 @@ class TelecareController {
       res.json({
         success: true,
         data: {
-          run_id: run.run_id,
-          zip: run.zip,
+          run_id: run.id,
+          zip: run.zipcode,
           file_structure: fileInfo,
           file_refs: run.file_refs
         }
@@ -419,8 +463,9 @@ class TelecareController {
 
   // Get file content for viewing (not downloading)
   static async getFileContent(req, res) {
+    const { run_id, file_type } = req.params; // file_type: 'input' or 'output'
+    
     try {
-      const { run_id, file_type } = req.params; // file_type: 'input' or 'output'
       
       if (!['input', 'output'].includes(file_type)) {
         return res.status(400).json({
@@ -463,7 +508,7 @@ class TelecareController {
 
       // Fallback: Generate content on-demand
       if (file_type === 'input') {
-        const records = await Record.findByZip(run.zip);
+        const records = await Record.findByZip(run.zipcode);
         if (!records || records.length === 0) {
           return res.status(404).json({
             success: false,
@@ -494,7 +539,16 @@ class TelecareController {
 
         const csv = require('csv-stringify');
         const csvString = await new Promise((resolve, reject) => {
-          csv.stringify(rows.map(row => row.payload), { header: true }, (err, output) => {
+          csv.stringify(rows.map(row => ({
+            NPA: row.npa,
+            NXX: row.nxx,
+            THOUSANDS: row.thousands,
+            STATE: row.state_code,
+            CITY: row.city,
+            COUNTY: row.county,
+            ZIP: row.zip,
+            TIMEZONE_ID: row.timezone_id
+          })), { header: true }, (err, output) => {
             if (err) reject(err);
             else resolve(output);
           });

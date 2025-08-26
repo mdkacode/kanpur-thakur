@@ -4,6 +4,7 @@ const path = require('path');
 const DemographicRecord = require('../models/DemographicRecord');
 const FileUpload = require('../models/FileUpload');
 const SchemaManager = require('../utils/schemaManager');
+const timezoneResolver = require('./timezoneResolver');
 
 class DemographicFileProcessor {
   constructor() {
@@ -110,9 +111,9 @@ class DemographicFileProcessor {
       // Create a dynamic record object that maps CSV columns to database fields
       const record = {};
       
-      // Map the first column (name) to zipcode if it exists
-      if (row.name && !row.zipcode) {
-        record.zipcode = row.name;
+      // Map the first column (name) to zip_code if it exists
+      if (row.name && !row.zip_code) {
+        record.zip_code = row.name;
       }
       
       // Dynamically map all other columns
@@ -122,9 +123,9 @@ class DemographicFileProcessor {
         }
       });
       
-      // Ensure zipcode exists (required field)
-      if (!record.zipcode) {
-        console.warn('Row missing zipcode, skipping:', row);
+      // Ensure zip_code exists (required field)
+      if (!record.zip_code) {
+        console.warn('Row missing zip_code, skipping:', row);
         return null;
       }
 
@@ -137,14 +138,14 @@ class DemographicFileProcessor {
 
   validateRecords(records) {
     return records.filter(record => {
-      // Basic validation - ensure zipcode exists and is not empty
-      if (!record.zipcode || record.zipcode.trim() === '') {
+      // Basic validation - ensure zip_code exists and is not empty
+      if (!record.zip_code || record.zip_code.trim() === '') {
         return false;
       }
       
       // Ensure at least one other field has data
       const hasData = Object.values(record).some(value => 
-        value && value.toString().trim() !== '' && value !== '-$1'
+        value && value.toString().trim() !== '' && value !== '-1'
       );
       
       return hasData;
@@ -161,7 +162,10 @@ class DemographicFileProcessor {
       const batch = records.slice(i, i + this.batchSize);
       
       try {
-        await DemographicRecord.bulkCreate(batch);
+        // Add timezone resolution to each record in the batch
+        const processedBatch = await this.addTimezoneToBatch(batch);
+        
+        await DemographicRecord.bulkCreate(processedBatch);
         totalProcessed += batch.length;
         
         // Log progress
@@ -185,6 +189,39 @@ class DemographicFileProcessor {
     }
     
     return totalProcessed;
+  }
+
+  async addTimezoneToBatch(batch) {
+    const processedBatch = [];
+    
+    for (const record of batch) {
+      try {
+        // Resolve timezone based on state and zip_code
+        let timezoneId = record.timezone_id;
+        if (!timezoneId && record.state_code) {
+          const timezone = await timezoneResolver.resolveTimezone({
+            state: record.state_code,
+            city: record.city,
+            zipcode: record.zip_code
+          });
+          timezoneId = timezone ? timezone.id : null;
+        }
+        
+        // Add timezone_id to the record
+        const processedRecord = {
+          ...record,
+          timezone_id: timezoneId
+        };
+        
+        processedBatch.push(processedRecord);
+      } catch (error) {
+        console.error('Error adding timezone to record:', error);
+        // Continue with the record without timezone
+        processedBatch.push(record);
+      }
+    }
+    
+    return processedBatch;
   }
 
   async cleanupFile(filePath) {

@@ -12,7 +12,7 @@ class DemographicRecordController {
         sortBy = 'created_at',
         sortOrder = 'DESC',
         state,
-        zipcode,
+        zip_code,
         county,
         city,
         timezone,
@@ -76,9 +76,9 @@ class DemographicRecordController {
         filters.state = state.trim().split(',').map(s => s.trim()).filter(s => s);
         console.log('🔍 Processed state filter:', filters.state);
       }
-      if (zipcode && zipcode.trim()) {
-        filters.zipcode = zipcode.trim().split(',').map(s => s.trim()).filter(s => s);
-        console.log('🔍 Processed zipcode filter:', filters.zipcode);
+      if (zip_code && zip_code.trim()) {
+        filters.zip_code = zip_code.trim().split(',').map(s => s.trim()).filter(s => s);
+        console.log('🔍 Processed zip_code filter:', filters.zip_code);
       }
       if (county && county.trim()) {
         filters.county = county.trim().split(',').map(s => s.trim()).filter(s => s);
@@ -254,12 +254,12 @@ class DemographicRecordController {
       const recordData = req.body;
       
       // Validate required fields
-      if (!recordData.zipcode) {
-        return res.status(400).json({
-          success: false,
-          message: 'Zipcode is required'
-        });
-      }
+          if (!recordData.zip_code) {
+      return res.status(400).json({
+        success: false,
+        message: 'Zip_code is required'
+      });
+    }
 
       const record = await DemographicRecord.create(recordData);
       

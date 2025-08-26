@@ -487,7 +487,7 @@ const ComprehensiveDashboard: React.FC = () => {
       return;
     }
     
-    console.log('Starting download for run:', targetRun.run_id);
+            console.log('Starting download for run:', targetRun.run_id);
     try {
       const blob = await telecareApi.downloadInputCSV(targetRun.run_id);
       console.log('Download successful, blob size:', blob.size);
@@ -1622,7 +1622,7 @@ const ComprehensiveDashboard: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
               <div>
                 <div className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Run ID</div>
-                <div className="font-mono text-sm">{currentRun.run_id.slice(0, 8)}...</div>
+                <div className="font-mono text-sm">{String(currentRun.run_id || '').slice(0, 8)}...</div>
               </div>
               <div>
                 <div className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Started</div>
@@ -1670,7 +1670,7 @@ const ComprehensiveDashboard: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
               <div>
                 <div className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Run ID</div>
-                <div className="font-mono text-sm">{latestRun.run_id.slice(0, 8)}...</div>
+                <div className="font-mono text-sm">{String(latestRun.run_id || '').slice(0, 8)}...</div>
               </div>
               <div>
                 <div className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>Started</div>

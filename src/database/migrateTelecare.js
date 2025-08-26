@@ -36,11 +36,11 @@ const createTelecareTables = async () => {
 
     // Create indexes for performance
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_telecare_runs_zip ON telecare_runs(zip)
+      CREATE INDEX IF NOT EXISTS idx_telecare_runs_zipcode ON telecare_runs(zipcode)
     `);
 
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_telecare_runs_zip_started ON telecare_runs(zip, started_at DESC)
+      CREATE INDEX IF NOT EXISTS idx_telecare_runs_zipcode_started ON telecare_runs(zipcode, started_at DESC)
     `);
 
     await db.query(`

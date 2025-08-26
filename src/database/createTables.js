@@ -146,7 +146,7 @@ const createCoreTables = async () => {
     `);
 
     await db.query(`
-      CREATE INDEX IF NOT EXISTS idx_telecare_runs_zip ON telecare_runs(zip)
+      CREATE INDEX IF NOT EXISTS idx_telecare_runs_zipcode ON telecare_runs(zipcode)
     `);
 
     await db.query(`

@@ -3,22 +3,24 @@ const { v4: uuidv4 } = require('uuid');
 
 class PhoneNumber {
   // Create a new phone number generation job
-  static async createJob(runId, zip, filterId = null) {
+  static async createJob(jobType, zip, filterId = null) {
     try {
-      const jobId = uuidv4();
-      
       // Handle null run_id for CSV-based generation and direct NPA NXX generation
-      if (runId === 'csv-generated' || runId === 'npa-nxx-records') {
-        runId = null;
+      let runId = null;
+      if (jobType === 'telecare-generated') {
+        // For telecare-generated jobs, we need a run_id
+        // This should be passed as filterId when calling from telecare context
+        runId = filterId;
+        filterId = null;
       }
       
       const query = `
-        INSERT INTO phone_number_jobs (job_id, run_id, zip, filter_id, status)
-        VALUES ($1, $2, $3, $4, 'pending')
+        INSERT INTO phone_number_jobs (run_id, job_type, status)
+        VALUES ($1, $2, 'pending')
         RETURNING *
       `;
       
-      const result = await db.query(query, [jobId, runId, zip, filterId]);
+      const result = await db.query(query, [runId, jobType]);
       return result.rows[0];
     } catch (error) {
       console.error('Error creating phone number job:', error);
@@ -34,7 +36,7 @@ class PhoneNumber {
       let valueIndex = 3;
 
       if (additionalData.totalNumbers !== undefined) {
-        updateFields.push(`total_numbers = $${valueIndex++}`);
+        updateFields.push(`total_records = $${valueIndex++}`);
         values.push(additionalData.totalNumbers);
       }
 
@@ -44,12 +46,12 @@ class PhoneNumber {
       }
 
       if (additionalData.failedNumbers !== undefined) {
-        updateFields.push(`failed_numbers = $${valueIndex++}`);
+        updateFields.push(`processed_records = $${valueIndex++}`);
         values.push(additionalData.failedNumbers);
       }
 
       if (additionalData.finishedAt !== undefined) {
-        updateFields.push(`finished_at = $${valueIndex++}`);
+        updateFields.push(`completed_at = $${valueIndex++}`);
         values.push(additionalData.finishedAt);
       }
 
@@ -63,7 +65,7 @@ class PhoneNumber {
       const query = `
         UPDATE phone_number_jobs 
         SET ${updateFields.join(', ')}
-        WHERE job_id = $1
+        WHERE id = $1
         RETURNING *
       `;
 
@@ -79,7 +81,7 @@ class PhoneNumber {
   static async getJobById(jobId) {
     try {
       const query = `
-        SELECT * FROM phone_number_jobs WHERE job_id = $1
+        SELECT * FROM phone_number_jobs WHERE id = $1
       `;
       
       const result = await db.query(query, [jobId]);
@@ -109,7 +111,11 @@ class PhoneNumber {
   static async getJobsByZip(zip) {
     try {
       const query = `
-        SELECT * FROM phone_number_jobs WHERE zip = $1 ORDER BY created_at DESC
+        SELECT DISTINCT pnj.* 
+        FROM phone_number_jobs pnj
+        INNER JOIN phone_numbers pn ON pnj.id = pn.job_id
+        WHERE pn.zip = $1 
+        ORDER BY pnj.created_at DESC
       `;
       
       const result = await db.query(query, [zip]);
@@ -127,34 +133,28 @@ class PhoneNumber {
 
       const query = `
         INSERT INTO phone_numbers (
-          job_id, run_id, zip, npa, nxx, thousands, last_three, full_phone_number, 
-          state, timezone, company_type, company, ratecenter, filter_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-        ON CONFLICT (full_phone_number, job_id) DO NOTHING
+          job_id, npa, nxx, thousands, full_phone_number, 
+          zip, state_code, city, county, timezone_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (full_phone_number) DO NOTHING
         RETURNING id
       `;
 
       const results = [];
       for (const phoneNumber of phoneNumbers) {
         try {
-          // Handle null run_id for CSV-based generation
-          const runId = phoneNumber.run_id || null;
           
           const result = await db.query(query, [
             phoneNumber.job_id,
-            runId,
-            phoneNumber.zip,
             phoneNumber.npa,
             phoneNumber.nxx,
             phoneNumber.thousands,
-            phoneNumber.last_three,
             phoneNumber.full_phone_number,
-            phoneNumber.state,
-            phoneNumber.timezone,
-            phoneNumber.company_type,
-            phoneNumber.company,
-            phoneNumber.ratecenter,
-            phoneNumber.filter_id
+            phoneNumber.zip,
+            phoneNumber.state_code || phoneNumber.state,
+            phoneNumber.city,
+            phoneNumber.county,
+            phoneNumber.timezone_id || (typeof phoneNumber.timezone === 'number' ? phoneNumber.timezone : null)
           ]);
           
           if (result.rows[0]) {
@@ -288,9 +288,8 @@ class PhoneNumber {
         SELECT 
           COUNT(*) as total_phone_numbers,
           COUNT(DISTINCT job_id) as total_jobs,
-          COUNT(DISTINCT run_id) as total_runs,
           COUNT(DISTINCT zip) as total_zips,
-          COUNT(DISTINCT state) as total_states
+          COUNT(DISTINCT state_code) as total_states
         FROM phone_numbers
       `;
       
@@ -321,7 +320,9 @@ class PhoneNumber {
   static async deletePhoneNumbersByRunId(runId) {
     try {
       const query = `
-        DELETE FROM phone_numbers WHERE run_id = $1
+        DELETE FROM phone_numbers pn
+        USING phone_number_jobs pnj
+        WHERE pn.job_id = pnj.id AND pnj.run_id = $1
       `;
       
       const result = await db.query(query, [runId]);
@@ -364,8 +365,9 @@ class PhoneNumber {
       const query = `
         SELECT COUNT(*) as count, 
                MAX(created_at) as latest_generated
-        FROM phone_numbers 
-        WHERE zip = $1 AND filter_id = $2
+        FROM phone_numbers pn
+        INNER JOIN phone_number_jobs pnj ON pn.job_id = pnj.id
+        WHERE pn.zip = $1 AND pnj.job_type = $2
       `;
       
       const result = await db.query(query, [zip, filterId]);
@@ -459,19 +461,14 @@ class PhoneNumber {
       const values = [];
       let valueIndex = 1;
 
-      if (filters.zip) {
-        query += ` AND zip = $${valueIndex++}`;
-        values.push(filters.zip);
-      }
-
       if (filters.run_id) {
         query += ` AND run_id = $${valueIndex++}`;
         values.push(filters.run_id);
       }
 
-      if (filters.filter_id) {
-        query += ` AND filter_id = $${valueIndex++}`;
-        values.push(filters.filter_id);
+      if (filters.job_type) {
+        query += ` AND job_type = $${valueIndex++}`;
+        values.push(filters.job_type);
       }
 
       if (filters.status) {
@@ -495,14 +492,17 @@ class PhoneNumber {
       const offset = (page - 1) * limit;
       
       const query = `
-        SELECT * FROM phone_numbers 
-        WHERE filter_id = $1 
-        ORDER BY created_at DESC 
+        SELECT pn.* FROM phone_numbers pn
+        INNER JOIN phone_number_jobs pnj ON pn.job_id = pnj.id
+        WHERE pnj.job_type = $1 
+        ORDER BY pn.created_at DESC 
         LIMIT $2 OFFSET $3
       `;
       
       const countQuery = `
-        SELECT COUNT(*) FROM phone_numbers WHERE filter_id = $1
+        SELECT COUNT(*) FROM phone_numbers pn
+        INNER JOIN phone_number_jobs pnj ON pn.job_id = pnj.id
+        WHERE pnj.job_type = $1
       `;
 
       const [result, countResult] = await Promise.all([
@@ -540,7 +540,8 @@ class PhoneNumber {
           COUNT(DISTINCT pn.job_id) as job_count,
           MAX(pn.created_at) as latest_generation
         FROM user_filters f
-        LEFT JOIN phone_numbers pn ON f.id = pn.filter_id
+        LEFT JOIN phone_number_jobs pnj ON f.id::text = pnj.job_type
+        LEFT JOIN phone_numbers pn ON pnj.id = pn.job_id
         WHERE f.filter_type = 'demographic'
         GROUP BY f.id, f.name, f.filter_type, f.is_active, f.created_at
         ORDER BY f.created_at DESC

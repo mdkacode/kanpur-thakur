@@ -13,16 +13,15 @@ class Telecare {
         file_refs = {}
       } = runData;
 
-      const run_id = uuidv4();
       const query = `
         INSERT INTO telecare_runs (
-          run_id, zip, input_csv_name, output_csv_name, 
+          zipcode, input_csv_name, output_csv_name, 
           script_version, file_refs, status, started_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, 'processing', CURRENT_TIMESTAMP)
+        ) VALUES ($1, $2, $3, $4, $5, 'processing', CURRENT_TIMESTAMP)
         RETURNING *
       `;
       
-      const values = [run_id, zip, input_csv_name, output_csv_name, script_version, file_refs];
+      const values = [zip, input_csv_name, output_csv_name, script_version, file_refs];
       const result = await db.query(query, values);
       return result.rows[0];
     } catch (error) {
@@ -58,7 +57,7 @@ class Telecare {
       const query = `
         UPDATE telecare_runs 
         SET ${updateFields.join(', ')}
-        WHERE run_id = $1
+        WHERE id = $1
         RETURNING *
       `;
 
@@ -73,7 +72,7 @@ class Telecare {
   // Get run by ID
   static async getRunById(run_id) {
     try {
-      const query = 'SELECT * FROM telecare_runs WHERE run_id = $1';
+      const query = 'SELECT * FROM telecare_runs WHERE id = $1';
       const result = await db.query(query, [run_id]);
       return result.rows[0] || null;
     } catch (error) {
@@ -87,7 +86,7 @@ class Telecare {
     try {
       const query = `
         SELECT * FROM telecare_runs 
-        WHERE zip = $1 
+        WHERE zipcode = $1 
         ORDER BY started_at DESC 
         LIMIT $2
       `;
@@ -104,7 +103,7 @@ class Telecare {
     try {
       const query = `
         SELECT * FROM telecare_runs 
-        WHERE zip = $1 
+        WHERE zipcode = $1 
         ORDER BY started_at DESC 
         LIMIT 1
       `;
@@ -122,14 +121,28 @@ class Telecare {
       if (rows.length === 0) return [];
 
       const query = `
-        INSERT INTO telecare_output_rows (run_id, zip, payload)
-        VALUES ($1, $2, $3)
+        INSERT INTO telecare_output_rows (
+          run_id, zip, npa, nxx, state_code, city, county, 
+          timezone_id, thousands
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id
       `;
 
       const savedRows = [];
       for (const row of rows) {
-        const result = await db.query(query, [run_id, zip, row]);
+        // Parse the row data - assuming it's a CSV row or object with NPA NXX data
+        const npa = row.npa || row.NPA || '';
+        const nxx = row.nxx || row.NXX || '';
+        const state_code = row.state_code || row.STATE || row.state || '';
+        const city = row.city || row.CITY || '';
+        const county = row.county || row.COUNTY || '';
+        const timezone_id = row.timezone_id || row.timezone || null;
+        const thousands = row.thousands || row.THOUSANDS || '';
+
+        const result = await db.query(query, [
+          run_id, zip, npa, nxx, state_code, city, county, timezone_id, thousands
+        ]);
         savedRows.push(result.rows[0]);
       }
 
@@ -165,7 +178,7 @@ class Telecare {
           COUNT(CASE WHEN status = 'success' THEN 1 END) as successful_runs,
           COUNT(CASE WHEN status = 'error' THEN 1 END) as failed_runs,
           COUNT(CASE WHEN status = 'processing' THEN 1 END) as processing_runs,
-          COUNT(DISTINCT zip) as unique_zips,
+          COUNT(DISTINCT zipcode) as unique_zips,
           SUM(row_count) as total_rows_processed
         FROM telecare_runs
       `;

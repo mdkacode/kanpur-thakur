@@ -43,7 +43,7 @@ const { Search } = Input;
 
 export interface DemographicRecord {
   id: number;
-  zipcode: string;
+  zip_code: string;
   state: string;
   county: string;
   city: string;
@@ -268,7 +268,7 @@ const DemographicRecords: React.FC = () => {
     },
     getCheckboxProps: (record: DemographicRecord) => ({
       disabled: false,
-      name: record.zipcode,
+              name: record.zip_code,
     }),
   };
 
@@ -350,7 +350,7 @@ const DemographicRecords: React.FC = () => {
         break;
       case 'createFilter':
         const selectedRecords = records.filter(record => selectedRowKeys.includes(record.id));
-        const zipcodes = selectedRecords.map(r => r.zipcode);
+        const zipcodes = selectedRecords.map(r => r.zip_code);
         message.success(`Selected ${zipcodes.length} zipcodes for filter creation`);
         // Could integrate with filter creation logic here
         break;
@@ -369,7 +369,7 @@ const DemographicRecords: React.FC = () => {
     const csvContent = [
       headers.join(','),
       ...data.map(record => [
-        record.zipcode,
+        record.zip_code,
         record.state,
         record.county,
         record.city,
@@ -397,14 +397,14 @@ const DemographicRecords: React.FC = () => {
   const columns: ColumnsType<DemographicRecord> = [
     {
       title: 'Zipcode',
-      dataIndex: 'zipcode',
-      key: 'zipcode',
+              dataIndex: 'zip_code',
+      key: 'zip_code',
       sorter: true,
       width: 100,
       fixed: 'left' as const,
-      ...getColumnSearchProps('zipcode', 'Zipcode'),
-      filters: getUniqueValues('zipcode'),
-      onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.zipcode === value.toString(),
+      ...getColumnSearchProps('zip_code', 'Zipcode'),
+      filters: getUniqueValues('zip_code'),
+      onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.zip_code === value.toString(),
       render: (text: string) => (
         <Tag color="blue" style={{ fontWeight: 600 }}>
           {text}
@@ -639,7 +639,7 @@ const DemographicRecords: React.FC = () => {
               type="text" 
               size="small" 
               icon={<EyeOutlined />}
-              onClick={() => message.info(`Viewing details for ${record.zipcode}`)}
+              onClick={() => message.info(`Viewing details for ${record.zip_code}`)}
             />
           </Tooltip>
         </Space>

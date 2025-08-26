@@ -127,7 +127,7 @@ const ViewRecordsDashboard: React.FC = () => {
     }
     try {
       // Fetch all unique zipcodes
-      const zipcodesResponse = await apiClient.get('/demographic/records/unique/zipcode?limit=1000');
+      const zipcodesResponse = await apiClient.get('/demographic/records/unique/zip_code?limit=1000');
       if (zipcodesResponse.data.success) {
         const zipcodes = zipcodesResponse.data.data || [];
         setAllZipcodes(zipcodes);
@@ -262,7 +262,7 @@ const ViewRecordsDashboard: React.FC = () => {
     
     setLoadingZipcodes(true);
     try {
-      const url = `/demographic/records/unique/zipcode?search=${encodeURIComponent(query)}&limit=10`;
+      const url = `/demographic/records/unique/zip_code?search=${encodeURIComponent(query)}&limit=10`;
       console.log('🌐 Calling API:', url);
       const response = await apiClient.get(url);
       console.log('✅ Zipcode API response:', response.data);
@@ -438,7 +438,7 @@ const ViewRecordsDashboard: React.FC = () => {
 
       if (searchQuery) params.append('search', searchQuery);
       if (stateFilter.length > 0) params.append('state', stateFilter.join(','));
-      if (zipcodeFilter.length > 0) params.append('zipcode', zipcodeFilter.join(','));
+      if (zipcodeFilter.length > 0) params.append('zip_code', zipcodeFilter.join(','));
 
       // Add advanced filters
       Object.entries(advancedFilters).forEach(([key, value]) => {
@@ -575,7 +575,7 @@ const ViewRecordsDashboard: React.FC = () => {
       
       // Basic filters - only include if they have values
       if (searchQuery.trim()) allFilters.search = searchQuery.trim();
-      if (zipcodeFilter.length > 0) allFilters.zipcode = zipcodeFilter.join(',');
+      if (zipcodeFilter.length > 0) allFilters.zip_code = zipcodeFilter.join(',');
       if (stateFilter.length > 0) allFilters.state = stateFilter.join(',');
       if (advancedFilters.county?.length > 0) allFilters.county = advancedFilters.county.join(',');
       if (advancedFilters.city?.length > 0) allFilters.city = advancedFilters.city.join(',');
@@ -657,7 +657,7 @@ const ViewRecordsDashboard: React.FC = () => {
       
       // Load basic filters
       setSearchQuery(config.search || '');
-      setZipcodeFilter(config.zipcode ? (Array.isArray(config.zipcode) ? config.zipcode : config.zipcode.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : []);
+      setZipcodeFilter(config.zip_code ? (Array.isArray(config.zip_code) ? config.zip_code : config.zip_code.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : []);
       setStateFilter(config.state ? (Array.isArray(config.state) ? config.state : config.state.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : []);
       
       // Load advanced filters
@@ -810,7 +810,7 @@ const ViewRecordsDashboard: React.FC = () => {
     try {
       // Extract unique zipcodes from selected records
       const selectedRecords = records.filter(record => selectedRowKeys.includes(record.id));
-      const zipcodes = Array.from(new Set(selectedRecords.map(record => record.zipcode)));
+      const zipcodes = Array.from(new Set(selectedRecords.map(record => record.zip_code)));
       
       if (zipcodes.length === 0) {
         message.error('No valid zipcodes found in selected records');
@@ -837,7 +837,7 @@ const ViewRecordsDashboard: React.FC = () => {
 
     try {
       const selectedRecords = records.filter(record => selectedRowKeys.includes(record.id));
-      const zipcodes = Array.from(new Set(selectedRecords.map(record => record.zipcode)));
+      const zipcodes = Array.from(new Set(selectedRecords.map(record => record.zip_code)));
       const timezones = Array.from(new Set(selectedRecords.map(record => record.timezone_id).filter(Boolean)));
       
       if (zipcodes.length === 0) {
@@ -847,7 +847,7 @@ const ViewRecordsDashboard: React.FC = () => {
 
       // Create a filter configuration based on selected records AND current filters
       const filterConfig: any = {
-        zipcode: zipcodes.join(','),
+        zip_code: zipcodes.join(','),
         sortBy: sortBy,
         sortOrder: sortOrder === 'ascend' ? 'ASC' : 'DESC'
       };
@@ -948,7 +948,7 @@ const ViewRecordsDashboard: React.FC = () => {
 
       // Add current filters if they have values
       if (zipcodeFilter.length > 0) {
-        filterConfig.zipcode = zipcodeFilter.join(',');
+        filterConfig.zip_code = zipcodeFilter.join(',');
       }
       if (stateFilter.length > 0) {
         filterConfig.state = stateFilter.join(',');
@@ -1069,8 +1069,8 @@ const ViewRecordsDashboard: React.FC = () => {
     const newRaceBlackFilter: string[] = [];
     const newRaceHispanicFilter: string[] = [];
 
-    if (filters.zipcode) {
-      newZipcodeFilter.push(...filters.zipcode);
+    if (filters.zip_code) {
+      newZipcodeFilter.push(...filters.zip_code);
     }
     if (filters.state) {
       newStateFilter.push(...filters.state);
@@ -1139,7 +1139,7 @@ const ViewRecordsDashboard: React.FC = () => {
     const csvContent = [
       headers.join(','),
       ...data.map(record => [
-        record.zipcode,
+        record.zip_code,
         record.state,
         record.county,
         record.city,
@@ -1988,7 +1988,7 @@ const ViewRecordsDashboard: React.FC = () => {
                       }`}
                     >
                       <option value="created_at">🕒 Created Date</option>
-                      <option value="zipcode">📮 Zipcode</option>
+                      <option value="zip_code">📮 Zipcode</option>
                       <option value="state">🌍 State</option>
                       <option value="county">🏛️ County</option>
                       <option value="city">🏙️ City</option>
@@ -2286,17 +2286,17 @@ const ViewRecordsDashboard: React.FC = () => {
               },
               getCheckboxProps: (record: DemographicRecord) => ({
                 disabled: false,
-                name: record.zipcode,
+                name: record.zip_code,
               }),
             }}
             columns={[
               {
                 title: 'Zipcode',
-                dataIndex: 'zipcode',
-                key: 'zipcode',
+                dataIndex: 'zip_code',
+                key: 'zip_code',
                 width: 120,
                 fixed: 'left',
-                sorter: (a: DemographicRecord, b: DemographicRecord) => a.zipcode.localeCompare(b.zipcode),
+                sorter: (a: DemographicRecord, b: DemographicRecord) => a.zip_code.localeCompare(b.zip_code),
                 render: (text: string) => (
                   <Tag color="blue" style={{ fontWeight: 'bold' }}>
                     {text}
@@ -2533,7 +2533,7 @@ const ViewRecordsDashboard: React.FC = () => {
                     type="text"
                     onClick={() => {
                       console.log('View record:', record);
-                      message.info(`Viewing record for ${record.zipcode}`);
+                      message.info(`Viewing record for ${record.zip_code}`);
                     }}
                   >
                     View

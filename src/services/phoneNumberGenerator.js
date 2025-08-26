@@ -66,11 +66,11 @@ class PhoneNumberGenerator {
 
   // Validate NPA, NXX, and THOUSANDS - ALL THREE ARE REQUIRED
   validatePhoneComponents(npa, nxx, thousands) {
-    // Check if all three required fields are present
-    if (!npa || !nxx || !thousands) {
+    // Check if NPA and NXX are present (THOUSANDS can be null/empty for full series generation)
+    if (!npa || !nxx) {
       return { 
         valid: false, 
-        error: `Missing required fields: NPA=${!!npa}, NXX=${!!nxx}, THOUSANDS=${!!thousands}` 
+        error: `Missing required fields: NPA=${!!npa}, NXX=${!!nxx}` 
       };
     }
 
@@ -84,9 +84,14 @@ class PhoneNumberGenerator {
       return { valid: false, error: 'NXX must be exactly 3 digits' };
     }
 
-    // Validate THOUSANDS format (single digit 0-9 or "-" for default)
-    if (thousands !== '-' && (thousands.length !== 1 || !/^\d$/.test(thousands))) {
-      return { valid: false, error: 'THOUSANDS must be exactly 1 digit (0-9) or "-"' };
+    // Reject THOUSANDS = "-" (invalid data)
+    if (thousands === '-') {
+      return { valid: false, error: 'THOUSANDS cannot be "-" - skipping entire series' };
+    }
+
+    // If THOUSANDS is provided and not '-', it must be a single digit (0-9)
+    if (thousands && thousands !== '' && (thousands.length !== 1 || !/^\d$/.test(thousands.toString()))) {
+      return { valid: false, error: 'THOUSANDS must be exactly 1 digit (0-9) if provided' };
     }
 
     return { valid: true };
@@ -106,34 +111,54 @@ class PhoneNumberGenerator {
     // Get timezone for the state
     const timezone = this.getTimezoneForState(state);
 
-    // Handle THOUSANDS field - if it's "-" or empty, set to "0" (single digit)
-    let thousandsBase = thousands;
-    if (!thousands || thousands === '-' || thousands.trim() === '') {
-      thousandsBase = '0';
-    }
-    // Ensure thousands is exactly 1 digit
-    thousandsBase = thousandsBase.toString().slice(-1); // Take only the last digit
-
-    // Generate numbers from 000 to 999 for the complete series
-    // Format: NPA + NXX + THOUSANDS + 000-999 (total 10 digits)
-    for (let i = 0; i <= 999; i++) {
-      const lastThreeDigits = i.toString().padStart(3, '0');
-      const fullPhoneNumber = `${npa}${nxx}${thousandsBase}${lastThreeDigits}`;
+    // If THOUSANDS is null/empty, generate for all thousands digits (0-9)
+    // If THOUSANDS is a specific digit, generate only for that digit
+    if (!thousands || thousands === '') {
+      // Generate for all thousands digits (0-9)
+      for (let thousandsDigit = 0; thousandsDigit <= 9; thousandsDigit++) {
+        for (let i = 0; i <= 999; i++) {
+          const lastThreeDigits = i.toString().padStart(3, '0');
+          const fullPhoneNumber = `${npa}${nxx}${thousandsDigit}${lastThreeDigits}`;
+          
+          phoneNumbers.push({
+            npa,
+            nxx,
+            thousands: thousandsDigit.toString(),
+            full_phone_number: fullPhoneNumber,
+            state,
+            timezone,
+            company_type: companyType,
+            company: company,
+            ratecenter,
+            zip,
+            filter_id: filterId
+        });
+        }
+      }
+    } else {
+      // Generate for specific thousands digit
+      const thousandsStr = thousands.toString().trim();
       
-      phoneNumbers.push({
-        npa,
-        nxx,
-        thousands: thousandsBase,
-        last_three: lastThreeDigits,
-        full_phone_number: fullPhoneNumber,
-        state,
-        timezone,
-        company_type: companyType,
-        company: company,
-        ratecenter,
-        zip,
-        filter_id: filterId
-      });
+      // Generate numbers from 000 to 999 for the complete series
+      // Format: NPA + NXX + THOUSANDS + 000-999 (total 10 digits)
+      for (let i = 0; i <= 999; i++) {
+        const lastThreeDigits = i.toString().padStart(3, '0');
+        const fullPhoneNumber = `${npa}${nxx}${thousandsStr}${lastThreeDigits}`;
+        
+        phoneNumbers.push({
+          npa,
+          nxx,
+          thousands: thousandsStr,
+          full_phone_number: fullPhoneNumber,
+          state,
+          timezone,
+          company_type: companyType,
+          company: company,
+          ratecenter,
+          zip,
+          filter_id: filterId
+        });
+      }
     }
 
     return phoneNumbers;
@@ -171,11 +196,11 @@ class PhoneNumberGenerator {
       }
 
       // Create a new job
-      const job = await PhoneNumber.createJob(runId, zip, filterId);
-      console.log(`✅ Created phone number job: ${job.job_id}`);
+      const job = await PhoneNumber.createJob('telecare-generated', zip, runId);
+      console.log(`✅ Created phone number job: ${job.id}`);
 
       // Update job status to processing
-      await PhoneNumber.updateJobStatus(job.job_id, 'processing');
+      await PhoneNumber.updateJobStatus(job.id, 'processing');
 
       // Get telecare output rows
       const outputRows = await Telecare.getOutputRowsByRunId(runId);
@@ -186,7 +211,7 @@ class PhoneNumberGenerator {
       console.log(`📊 Found ${outputRows.length} output rows to process`);
 
       // Update job with total count
-      await PhoneNumber.updateJobStatus(job.job_id, 'processing', {
+      await PhoneNumber.updateJobStatus(job.id, 'processing', {
         totalNumbers: outputRows.length * 1000 // Each NPA-NXX generates 1000 numbers
       });
 
@@ -202,16 +227,25 @@ class PhoneNumberGenerator {
           // Extract required fields
           const npa = payload.NPA;
           const nxx = payload.NXX;
-          const thousands = payload.THOUSANDS || '-';
+          const thousands = payload.THOUSANDS; // Don't default to '-'
+          
+          // Skip rows with THOUSANDS = "-" (don't generate phone numbers for invalid data)
+          if (thousands === '-') {
+            console.warn(`⚠️ Skipping telecare output row with THOUSANDS = "-" - NPA: ${npa}, NXX: ${nxx} (no phone numbers generated)`);
+            totalFailed += 1000;
+            continue;
+          }
+          
           const state = payload.STATE;
           const companyType = payload['COMPANY TYPE'] || payload.COMPANY_TYPE;
           const company = payload.COMPANY;
           const ratecenter = payload.RATECENTER;
 
           // Validate ALL THREE required fields (NPA, NXX, THOUSANDS)
+          console.log(`🔍 Validating row: NPA=${npa}, NXX=${nxx}, THOUSANDS="${thousands}"`);
           const validation = this.validatePhoneComponents(npa, nxx, thousands);
           if (!validation.valid) {
-            console.warn(`⚠️ Skipping row with invalid phone components: ${validation.error}`, payload);
+            console.warn(`⚠️ Skipping row with invalid phone components: ${validation.error} - NPA: ${npa}, NXX: ${nxx}, THOUSANDS: "${thousands}"`);
             totalFailed += 1000; // Count as failed since we can't generate numbers
             continue;
           }
@@ -245,7 +279,7 @@ class PhoneNumberGenerator {
             
             // Update progress every 1000 numbers
             if (totalGenerated % 1000 === 0) {
-              await PhoneNumber.updateJobStatus(job.job_id, 'processing', {
+              await PhoneNumber.updateJobStatus(job.id, 'processing', {
                 generatedNumbers: totalGenerated,
                 failedNumbers: totalFailed
               });
@@ -266,7 +300,7 @@ class PhoneNumberGenerator {
         // Add job_id and run_id to each phone number
         const phoneNumbersWithJob = allPhoneNumbers.map(phoneNumber => ({
           ...phoneNumber,
-          job_id: job.job_id,
+          job_id: job.id,
           run_id: runId
         }));
 
@@ -275,7 +309,7 @@ class PhoneNumberGenerator {
       }
 
       // Update job status to completed
-      await PhoneNumber.updateJobStatus(job.job_id, 'completed', {
+      await PhoneNumber.updateJobStatus(job.id, 'completed', {
         generatedNumbers: totalGenerated,
         failedNumbers: totalFailed,
         finishedAt: new Date()
@@ -286,7 +320,7 @@ class PhoneNumberGenerator {
 
       return {
         success: true,
-        job_id: job.job_id,
+        job_id: job.id,
         total_generated: totalGenerated,
         total_failed: totalFailed,
         total_processed: outputRows.length
@@ -296,8 +330,8 @@ class PhoneNumberGenerator {
       console.error(`❌ Error in phone number generation:`, error);
       
       // Update job status to failed
-      if (job && job.job_id) {
-        await PhoneNumber.updateJobStatus(job.job_id, 'failed', {
+      if (job && job.id) {
+        await PhoneNumber.updateJobStatus(job.id, 'failed', {
           errorMessage: error.message,
           finishedAt: new Date()
         });
@@ -441,10 +475,10 @@ class PhoneNumberGenerator {
 
       // Create a new job
       job = await PhoneNumber.createJob('npa-nxx-records', zip, filterId);
-      console.log(`✅ Created phone number job: ${job.job_id}`);
+      console.log(`✅ Created phone number job: ${job.id}`);
 
       // Update job status to processing
-      await PhoneNumber.updateJobStatus(job.job_id, 'processing');
+      await PhoneNumber.updateJobStatus(job.id, 'processing');
 
       // Get NPA NXX records for this zipcode
       const Record = require('../models/Record');
@@ -457,7 +491,7 @@ class PhoneNumberGenerator {
       console.log(`📊 Found ${npaNxxRecords.length} NPA NXX records for zip ${zip}`);
 
       // Update job with total count
-      await PhoneNumber.updateJobStatus(job.job_id, 'processing', {
+      await PhoneNumber.updateJobStatus(job.id, 'processing', {
         totalNumbers: npaNxxRecords.length * 10000 // Each NPA-NXX generates 10,000 numbers (10 thousands digits × 1000 each)
       });
 
@@ -475,8 +509,8 @@ class PhoneNumberGenerator {
           const city = record.city;
           const ratecenter = record.rc;
 
-          // For direct NPA NXX generation, we generate for all thousands digits (0-9)
-          // So we only need to validate NPA and NXX, and ensure state is present
+          // For direct NPA NXX generation, we need to check if this NPA-NXX combination
+          // should actually generate phone numbers based on source data
           if (!npa || !nxx || !state) {
             console.warn(`⚠️ Skipping record with missing required fields:`, record);
             totalFailed += 10000; // Each NPA-NXX generates 10,000 numbers (10 thousands digits × 1000 each)
@@ -493,36 +527,44 @@ class PhoneNumberGenerator {
             continue;
           }
 
-          // Generate phone numbers for each THOUSANDS digit (0-9)
-          for (let thousandsDigit = 0; thousandsDigit <= 9; thousandsDigit++) {
-            const phoneNumbers = this.generatePhoneNumbersForNpaNxx(
-              npa, nxx, thousandsDigit.toString(), state, zip, 'STANDARD', 'Direct Generation', ratecenter, filterId
-            );
+          // Skip records with THOUSANDS = "-" (don't generate phone numbers for invalid data)
+          if (record.thousands === '-') {
+            console.warn(`⚠️ Skipping NPA-NXX ${npa}-${nxx} because THOUSANDS is "-" (no phone numbers generated)`);
+            totalFailed += 10000;
+            continue;
+          }
 
-            if (phoneNumbers.length > 0) {
-              // Check for duplicates before adding
-              const duplicateCheck = await PhoneNumber.checkExistingPhoneNumbers(phoneNumbers);
+          // Generate phone numbers using the updated generatePhoneNumbersForNpaNxx method
+          // This will handle null/empty THOUSANDS by generating for all digits (0-9)
+          console.log(`📱 Generating phone numbers for NPA-NXX ${npa}-${nxx} with THOUSANDS: "${record.thousands}"`);
+          
+          const phoneNumbers = this.generatePhoneNumbersForNpaNxx(
+            npa, nxx, record.thousands, state, zip, 'STANDARD', 'Direct Generation', ratecenter, filterId
+          );
+
+          if (phoneNumbers.length > 0) {
+            // Check for duplicates before adding
+            const duplicateCheck = await PhoneNumber.checkExistingPhoneNumbers(phoneNumbers);
+            
+            if (duplicateCheck.newCount > 0) {
+              allPhoneNumbers.push(...duplicateCheck.new);
+              totalGenerated += duplicateCheck.newCount;
               
-              if (duplicateCheck.newCount > 0) {
-                allPhoneNumbers.push(...duplicateCheck.new);
-                totalGenerated += duplicateCheck.newCount;
-                
-                if (duplicateCheck.existingCount > 0) {
-                  console.log(`⚠️ Skipped ${duplicateCheck.existingCount} duplicate phone numbers for NPA-NXX ${npa}-${nxx} thousands ${thousandsDigit}`);
-                }
-              } else {
-                console.log(`⚠️ All ${phoneNumbers.length} phone numbers for NPA-NXX ${npa}-${nxx} thousands ${thousandsDigit} already exist, skipping`);
+              if (duplicateCheck.existingCount > 0) {
+                console.log(`⚠️ Skipped ${duplicateCheck.existingCount} duplicate phone numbers for NPA-NXX ${npa}-${nxx}`);
               }
-              
-              // Update progress every 1000 numbers
-              if (totalGenerated % 1000 === 0) {
-                await PhoneNumber.updateJobStatus(job.job_id, 'processing', {
-                  generatedNumbers: totalGenerated,
-                  failedNumbers: totalFailed
-                });
-                console.log(`📈 Progress: ${totalGenerated} numbers generated, ${totalFailed} failed`);
-              }
+            } else {
+              console.log(`⚠️ All ${phoneNumbers.length} phone numbers for NPA-NXX ${npa}-${nxx} already exist, skipping`);
             }
+          }
+          
+          // Update progress every 1000 numbers
+          if (totalGenerated % 1000 === 0) {
+            await PhoneNumber.updateJobStatus(job.id, 'processing', {
+              generatedNumbers: totalGenerated,
+              failedNumbers: totalFailed
+            });
+            console.log(`📈 Progress: ${totalGenerated} numbers generated, ${totalFailed} failed`);
           }
 
         } catch (error) {
@@ -538,7 +580,7 @@ class PhoneNumberGenerator {
         // Add job_id to each phone number (no run_id for direct generation)
         const phoneNumbersWithJob = allPhoneNumbers.map(phoneNumber => ({
           ...phoneNumber,
-          job_id: job.job_id
+          job_id: job.id
           // run_id is null for direct generation
         }));
 
@@ -547,7 +589,7 @@ class PhoneNumberGenerator {
       }
 
       // Update job status to completed
-      await PhoneNumber.updateJobStatus(job.job_id, 'completed', {
+      await PhoneNumber.updateJobStatus(job.id, 'completed', {
         generatedNumbers: totalGenerated,
         failedNumbers: totalFailed,
         finishedAt: new Date()
@@ -558,7 +600,7 @@ class PhoneNumberGenerator {
 
       return {
         success: true,
-        job_id: job.job_id,
+        job_id: job.id,
         total_generated: totalGenerated,
         total_failed: totalFailed,
         total_processed: npaNxxRecords.length
@@ -568,8 +610,8 @@ class PhoneNumberGenerator {
       console.error(`❌ Error in phone number generation from NPA NXX records:`, error);
       
       // Update job status to failed
-      if (job && job.job_id) {
-        await PhoneNumber.updateJobStatus(job.job_id, 'failed', {
+      if (job && job.id) {
+        await PhoneNumber.updateJobStatus(job.id, 'failed', {
           errorMessage: error.message,
           finishedAt: new Date()
         });
@@ -614,10 +656,10 @@ class PhoneNumberGenerator {
 
       // Create a new job
       job = await PhoneNumber.createJob('csv-generated', zip, filterId);
-      console.log(`✅ Created phone number job: ${job.job_id}`);
+      console.log(`✅ Created phone number job: ${job.id}`);
 
       // Update job status to processing
-      await PhoneNumber.updateJobStatus(job.job_id, 'processing');
+      await PhoneNumber.updateJobStatus(job.id, 'processing');
 
       // Parse CSV data
       const rows = this.parseCSVData(csvData);
@@ -628,7 +670,7 @@ class PhoneNumberGenerator {
       console.log(`📊 Found ${rows.length} rows to process`);
 
       // Update job with total count
-      await PhoneNumber.updateJobStatus(job.job_id, 'processing', {
+      await PhoneNumber.updateJobStatus(job.id, 'processing', {
         totalNumbers: rows.length * 1000 // Each NPA-NXX generates 1000 numbers
       });
 
@@ -645,7 +687,15 @@ class PhoneNumberGenerator {
           // Extract required fields from CSV row with better fallbacks
           const npa = row.NPA || row.npa || row.Npa;
           const nxx = row.NXX || row.nxx || row.Nxx;
-          const thousands = row.THOUSANDS || row.thousands || row.Thousands || '-';
+          const thousands = row.THOUSANDS || row.thousands || row.Thousands; // Don't default to '-'
+          
+          // Skip rows with THOUSANDS = "-" (don't generate phone numbers for invalid data)
+          if (thousands === '-') {
+            console.warn(`⚠️ Skipping CSV row with THOUSANDS = "-" - NPA: ${npa}, NXX: ${nxx} (no phone numbers generated)`);
+            totalFailed += 1000;
+            continue;
+          }
+          
           const state = row.STATE || row.state || row.State;
           const companyType = row['COMPANY TYPE'] || row.COMPANY_TYPE || row.company_type || row['Company Type'];
           const company = row.COMPANY || row.company || row.Company;
@@ -698,7 +748,7 @@ class PhoneNumberGenerator {
             
             // Update progress every 1000 numbers
             if (totalGenerated % 1000 === 0) {
-              await PhoneNumber.updateJobStatus(job.job_id, 'processing', {
+              await PhoneNumber.updateJobStatus(job.id, 'processing', {
                 generatedNumbers: totalGenerated,
                 failedNumbers: totalFailed
               });
@@ -719,7 +769,7 @@ class PhoneNumberGenerator {
         // Add job_id to each phone number (no run_id for CSV generation)
         const phoneNumbersWithJob = allPhoneNumbers.map(phoneNumber => ({
           ...phoneNumber,
-          job_id: job.job_id
+          job_id: job.id
           // run_id is null for CSV-generated numbers
         }));
 
@@ -728,7 +778,7 @@ class PhoneNumberGenerator {
       }
 
       // Update job status to completed
-      await PhoneNumber.updateJobStatus(job.job_id, 'completed', {
+      await PhoneNumber.updateJobStatus(job.id, 'completed', {
         generatedNumbers: totalGenerated,
         failedNumbers: totalFailed,
         finishedAt: new Date()
@@ -739,7 +789,7 @@ class PhoneNumberGenerator {
 
       return {
         success: true,
-        job_id: job.job_id,
+        job_id: job.id,
         total_generated: totalGenerated,
         total_failed: totalFailed,
         total_processed: rows.length
@@ -749,8 +799,8 @@ class PhoneNumberGenerator {
       console.error(`❌ Error in phone number generation from CSV:`, error);
       
       // Update job status to failed
-      if (job && job.job_id) {
-        await PhoneNumber.updateJobStatus(job.job_id, 'failed', {
+      if (job && job.id) {
+        await PhoneNumber.updateJobStatus(job.id, 'failed', {
           errorMessage: error.message,
           finishedAt: new Date()
         });
@@ -811,7 +861,7 @@ class PhoneNumberGenerator {
       return {
         success: true,
         job: {
-          job_id: job.job_id,
+          job_id: job.id,
           status: job.status,
           total_numbers: job.total_numbers,
           generated_numbers: job.generated_numbers,
@@ -846,7 +896,7 @@ class PhoneNumberGenerator {
 
     // Define CSV headers
     const headers = [
-      'NPA', 'NXX', 'THOUSANDS', 'LAST_THREE', 'FULL_PHONE_NUMBER', 'STATE', 'TIMEZONE',
+      'NPA', 'NXX', 'THOUSANDS', 'FULL_PHONE_NUMBER', 'STATE', 'TIMEZONE',
       'COMPANY_TYPE', 'COMPANY', 'RATECENTER', 'ZIPCODE', 'FILTER_ID'
     ];
 
@@ -858,7 +908,6 @@ class PhoneNumberGenerator {
         phoneNumber.npa,
         phoneNumber.nxx,
         phoneNumber.thousands,
-        phoneNumber.last_three || '',
         phoneNumber.full_phone_number,
         phoneNumber.state,
         phoneNumber.timezone,

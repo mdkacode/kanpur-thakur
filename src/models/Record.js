@@ -1,20 +1,17 @@
 const db = require('../config/database');
+const timezoneResolver = require('../services/timezoneResolver');
+const { generateDedupeKey } = require('../database/addDedupeKeyMigration');
 
 class Record {
   static async create(recordData) {
-    const { npa, nxx, zip, state_code, city, rc } = recordData;
-    
-    // Get state_id from state_code
-    const stateQuery = 'SELECT id FROM states WHERE state_code = $1';
-    const stateResult = await db.query(stateQuery, [state_code]);
-    const state_id = stateResult.rows[0]?.id || null;
+    const { npa, nxx, zip, state_code, city, county, timezone_id, thousands } = recordData;
 
     const query = `
-      INSERT INTO records (npa, nxx, zip, state_id, state_code, city, rc)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO records (npa, nxx, zip, state_code, city, county, timezone_id, thousands)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
     `;
-    const values = [npa, nxx, zip, state_id, state_code, city, rc];
+    const values = [npa, nxx, zip, state_code, city, county, timezone_id, thousands];
     const result = await db.query(query, values);
     return result.rows[0];
   }
@@ -22,35 +19,82 @@ class Record {
   static async bulkCreate(records) {
     if (records.length === 0) return [];
     
-    // Get all unique state codes first
-    const stateCodes = [...new Set(records.map(r => r.state_code))];
-    const stateQuery = 'SELECT id, state_code FROM states WHERE state_code = ANY($1)';
-    const stateResult = await db.query(stateQuery, [stateCodes]);
-    const stateMap = {};
-    stateResult.rows.forEach(row => {
-      stateMap[row.state_code] = row.id;
-    });
+    // Process records to add timezone resolution and dedupe keys
+    const processedRecords = await this.processRecordsForBulkInsert(records);
+    
+    if (processedRecords.length === 0) return [];
     
     const query = `
-      INSERT INTO records (npa, nxx, zip, state_id, state_code, city, rc)
-      VALUES ${records.map((_, index) => {
-        const offset = index * 7;
-        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7})`;
+      INSERT INTO records (npa, nxx, zip, state_code, city, county, timezone_id, thousands, dedupe_key)
+      VALUES ${processedRecords.map((_, index) => {
+        const offset = index * 9;
+        return `($${offset + 1}, $${offset + 2}, $${offset + 3}, $${offset + 4}, $${offset + 5}, $${offset + 6}, $${offset + 7}, $${offset + 8}, $${offset + 9})`;
       }).join(', ')}
+      ON CONFLICT (dedupe_key) DO UPDATE SET
+        timezone_id = EXCLUDED.timezone_id,
+        updated_at = CURRENT_TIMESTAMP
       RETURNING *
     `;
     
-    const values = records.flatMap(record => [
+    const values = processedRecords.flatMap(record => [
       record.npa, 
       record.nxx, 
       record.zip, 
-      stateMap[record.state_code] || null, 
       record.state_code, 
       record.city, 
-      record.rc
+      record.county, 
+      record.timezone_id, 
+      record.thousands,
+      record.dedupe_key
     ]);
-    const result = await db.query(query, values);
-    return result.rows;
+    
+    try {
+      const result = await db.query(query, values);
+      return result.rows;
+    } catch (error) {
+      console.error('Error in bulkCreate:', error);
+      throw error;
+    }
+  }
+
+  static async processRecordsForBulkInsert(records) {
+    const processedRecords = [];
+    
+    for (const record of records) {
+      try {
+        // Generate dedupe key
+        const dedupeKey = generateDedupeKey(record);
+        
+        // Resolve timezone if not already set
+        let timezoneId = record.timezone_id;
+        if (!timezoneId) {
+          const timezone = await timezoneResolver.resolveTimezone({
+            state: record.state_code,
+            city: record.city,
+            zipcode: record.zip
+          });
+          timezoneId = timezone ? timezone.id : null;
+        }
+        
+        // Normalize empty strings to null for numeric fields
+        const processedRecord = {
+          ...record,
+          dedupe_key: dedupeKey,
+          timezone_id: timezoneId,
+          npa: record.npa || null,
+          nxx: record.nxx || null,
+          zip: record.zip || null,
+          thousands: record.thousands || null
+        };
+        
+        processedRecords.push(processedRecord);
+      } catch (error) {
+        console.error('Error processing record for bulk insert:', error);
+        // Continue with other records instead of failing completely
+      }
+    }
+    
+    return processedRecords;
   }
 
   static async findAll(options = {}) {
@@ -74,9 +118,7 @@ class Record {
              tz.abbreviation_daylight,
              tz.utc_offset_standard,
              tz.utc_offset_daylight,
-             tz.observes_dst,
-             tz.description as timezone_description,
-             tz.states as timezone_states
+             tz.observes_dst
       FROM records r
       LEFT JOIN timezones tz ON r.timezone_id = tz.id
     `;
@@ -97,7 +139,7 @@ class Record {
         r.zip ILIKE $${valueIndex} OR 
         r.state_code ILIKE $${valueIndex} OR 
         r.city ILIKE $${valueIndex} OR 
-        r.rc ILIKE $${valueIndex} OR
+        r.county ILIKE $${valueIndex} OR
         tz.timezone_name ILIKE $${valueIndex} OR
         tz.display_name ILIKE $${valueIndex} OR
         tz.abbreviation_standard ILIKE $${valueIndex} OR
@@ -147,7 +189,7 @@ class Record {
     }
 
     if (filters.rc) {
-      whereConditions.push(`r.rc ILIKE $${valueIndex}`);
+      whereConditions.push(`r.county ILIKE $${valueIndex}`);
       values.push(`%${filters.rc}%`);
       valueIndex++;
     }
@@ -234,7 +276,7 @@ class Record {
         r.zip,
         r.state_code,
         r.city,
-        r.rc,
+        r.county,
         r.created_at,
         tz.display_name as timezone_display_name,
         tz.abbreviation_standard,
@@ -255,7 +297,7 @@ class Record {
         r.zip ILIKE $${valueIndex} OR 
         r.state_code ILIKE $${valueIndex} OR 
         r.city ILIKE $${valueIndex} OR 
-        r.rc ILIKE $${valueIndex} OR
+        r.county ILIKE $${valueIndex} OR
         tz.timezone_name ILIKE $${valueIndex} OR
         tz.display_name ILIKE $${valueIndex} OR
         tz.abbreviation_standard ILIKE $${valueIndex} OR
@@ -304,9 +346,9 @@ class Record {
       valueIndex++;
     }
 
-    if (filters.rc) {
-      whereConditions.push(`r.rc ILIKE $${valueIndex}`);
-      values.push(`%${filters.rc}%`);
+    if (filters.county) {
+      whereConditions.push(`r.county ILIKE $${valueIndex}`);
+      values.push(`%${filters.county}%`);
       valueIndex++;
     }
 
@@ -342,9 +384,7 @@ class Record {
              tz.abbreviation_daylight,
              tz.utc_offset_standard,
              tz.utc_offset_daylight,
-             tz.observes_dst,
-             tz.description as timezone_description,
-             tz.states as timezone_states
+             tz.observes_dst
       FROM records r
       LEFT JOIN timezones tz ON r.timezone_id = tz.id
       WHERE r.id = $1
@@ -362,9 +402,7 @@ class Record {
              tz.abbreviation_daylight,
              tz.utc_offset_standard,
              tz.utc_offset_daylight,
-             tz.observes_dst,
-             tz.description as timezone_description,
-             tz.states as timezone_states
+             tz.observes_dst
       FROM records r
       LEFT JOIN timezones tz ON r.timezone_id = tz.id
       WHERE r.npa = $1 AND r.nxx = $2
@@ -382,9 +420,7 @@ class Record {
              tz.abbreviation_daylight,
              tz.utc_offset_standard,
              tz.utc_offset_daylight,
-             tz.observes_dst,
-             tz.description as timezone_description,
-             tz.states as timezone_states
+             tz.observes_dst
       FROM records r
       LEFT JOIN timezones tz ON r.timezone_id = tz.id
       WHERE r.zip = $1
@@ -402,9 +438,7 @@ class Record {
              tz.abbreviation_daylight,
              tz.utc_offset_standard,
              tz.utc_offset_daylight,
-             tz.observes_dst,
-             tz.description as timezone_description,
-             tz.states as timezone_states
+             tz.observes_dst
       FROM records r
       LEFT JOIN timezones tz ON r.timezone_id = tz.id
       WHERE r.state_code = $1

@@ -19,6 +19,8 @@ const filterRoutes = require('./routes/filterRoutes');
 const phoneNumberRoutes = require('./routes/phoneNumberRoutes');
 const phoneNumberGenerationRoutes = require('./routes/phoneNumberGenerationRoutes');
 const timezoneRoutes = require('./routes/timezoneRoutes');
+const pythonProcessorRoutes = require('./routes/pythonProcessorRoutes');
+const outputProcessorRoutes = require('./routes/outputProcessorRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
@@ -112,6 +114,8 @@ app.use('/api/v1/filters', filterRoutes);
 app.use('/api/v1/phone-numbers', phoneNumberRoutes);
 app.use('/api/v1/phone-generations', phoneNumberGenerationRoutes);
 app.use('/api/v1/timezones', timezoneRoutes);
+app.use('/api/v1/python-processor', pythonProcessorRoutes);
+app.use('/api/v1/outputs', outputProcessorRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

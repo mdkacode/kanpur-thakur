@@ -13,6 +13,11 @@
     "migrate:update-types": "node src/database/updateColumnTypes.js",
     "migrate:recreate-uploads": "node src/database/recreateTable.js",
     "seed": "node src/database/seed.js",
+    "seed:complete": "node src/database/seedDatabase.js",
+    "seed:timezones": "node src/database/populateUSTimezones.js",
+    "seed:states": "node src/database/populateUSStates.js",
+    "migrate:dedupe": "node src/database/addDedupeKeyMigration.js",
+    "create:states-table": "node src/database/createStatesTable.js",
     "optimize": "node src/database/optimizeForLargeData.js"
   },
   "keywords": [
