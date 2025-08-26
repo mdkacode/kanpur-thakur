@@ -17,6 +17,16 @@ interface NpaNxxRecord {
   state_code: string;
   city: string;
   rc: string;
+  timezone_id?: number;
+  timezone_name?: string;
+  timezone_display_name?: string;
+  abbreviation_standard?: string;
+  abbreviation_daylight?: string;
+  utc_offset_standard?: number;
+  utc_offset_daylight?: number;
+  observes_dst?: boolean;
+  timezone_description?: string;
+  timezone_states?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -39,6 +49,7 @@ interface TelecareRun {
 const ComprehensiveDashboard: React.FC = () => {
   const [searchZipcodes, setSearchZipcodes] = useState<string[]>([]);
   const [searchResults, setSearchResults] = useState<NpaNxxRecord[]>([]);
+  const [originalSearchResults, setOriginalSearchResults] = useState<NpaNxxRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
   const [processing, setProcessing] = useState(false);
@@ -66,6 +77,21 @@ const ComprehensiveDashboard: React.FC = () => {
     loadProcessedZipcodes();
     loadSavedFilters();
     loadPhoneNumberJobs();
+    
+    // Check for zipcodes in URL parameters (from Records page)
+    const urlParams = new URLSearchParams(window.location.search);
+    const zipcodesParam = urlParams.get('zipcodes');
+    if (zipcodesParam) {
+      const zipcodes = zipcodesParam.split(',').filter(zip => zip.trim());
+      if (zipcodes.length > 0) {
+        console.log('🔍 Found zipcodes in URL:', zipcodes);
+        setSearchZipcodes(zipcodes);
+        // Auto-search for these zipcodes
+        setTimeout(() => {
+          searchWithZipcodes(zipcodes);
+        }, 100);
+      }
+    }
   }, []);
 
   const loadSavedFilters = async () => {
@@ -103,7 +129,9 @@ const ComprehensiveDashboard: React.FC = () => {
       
       if (response.data.success) {
         const zipcodes = response.data.filteredZipcodes || [];
+        const appliedFilter = response.data.appliedFilter;
         console.log('✅ Filter zipcodes loaded:', zipcodes);
+        console.log('✅ Applied filter config:', appliedFilter?.filter_config);
         setFilterZipcodes(zipcodes);
         
         // Automatically populate search and trigger search if zipcodes are found
@@ -117,12 +145,12 @@ const ComprehensiveDashboard: React.FC = () => {
           // Show success message
           message.success(`Loaded ${zipcodes.length} zipcodes from filter. Auto-searching for NPA NXX records...`);
           
-          // Wait for state to update, then trigger search
+          // Wait for state to update, then trigger search with filter criteria
           setTimeout(() => {
             console.log('🔍 Current searchZipcodes state:', searchZipcodes);
             console.log('🔍 Auto-triggering search for zipcodes:', zipcodes);
-            // Use the zipcodes directly instead of relying on state
-            searchWithZipcodes(zipcodes);
+            // Use the zipcodes directly and apply the same filter criteria
+            searchWithZipcodesAndFilter(zipcodes, appliedFilter?.filter_config);
           }, 100);
         } else {
           message.warning('No zipcodes found for this filter');
@@ -136,6 +164,105 @@ const ComprehensiveDashboard: React.FC = () => {
       message.error('Error loading filter zipcodes');
     } finally {
       setLoadingFilterZipcodes(false);
+    }
+  };
+
+  // New function to search with specific zipcodes and filter criteria
+  const searchWithZipcodesAndFilter = async (zipcodesToSearch: string[], filterConfig?: any) => {
+    if (zipcodesToSearch.length === 0) {
+      setError('No zipcodes to search');
+      return;
+    }
+
+    // Validate zipcode format (5 digits) for all zipcodes
+    const invalidZipcodes = zipcodesToSearch.filter(zip => !/^\d{5}$/.test(zip.trim()));
+    if (invalidZipcodes.length > 0) {
+      setError(`Invalid zipcode format: ${invalidZipcodes.join(', ')}. Please enter valid 5-digit zipcodes.`);
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setSearchResults([]);
+    setCurrentRun(null);
+    setLatestRun(null);
+
+    try {
+      console.log('🔍 Searching for zipcodes with filter criteria:', zipcodesToSearch, filterConfig);
+      
+      // Build filter parameters for NPA NXX records
+      const filterParams = new URLSearchParams();
+      
+      // Add zipcodes as comma-separated list
+      filterParams.append('zip', zipcodesToSearch.join(','));
+      
+      // Add timezone filter if present
+      if (filterConfig?.timezone) {
+        const timezoneValues = Array.isArray(filterConfig.timezone) 
+          ? filterConfig.timezone 
+          : filterConfig.timezone.split(',').map((s: string) => s.trim()).filter((s: string) => s);
+        if (timezoneValues.length > 0) {
+          // Use timezone IDs directly for filtering
+          filterParams.append('timezone_id', timezoneValues.join(','));
+          console.log('🔍 Using timezone IDs for filtering:', timezoneValues);
+        }
+      }
+      
+      // Add state filter if present
+      if (filterConfig?.state) {
+        const stateValues = Array.isArray(filterConfig.state) 
+          ? filterConfig.state 
+          : filterConfig.state.split(',').map((s: string) => s.trim()).filter((s: string) => s);
+        if (stateValues.length > 0) {
+          filterParams.append('state_code', stateValues.join(','));
+        }
+      }
+      
+      // Add city filter if present
+      if (filterConfig?.city) {
+        const cityValues = Array.isArray(filterConfig.city) 
+          ? filterConfig.city 
+          : filterConfig.city.split(',').map((s: string) => s.trim()).filter((s: string) => s);
+        if (cityValues.length > 0) {
+          filterParams.append('city', cityValues.join(','));
+        }
+      }
+      
+      console.log('🔍 Filter parameters for NPA NXX search:', filterParams.toString());
+      
+      // Search for NPA NXX records with filter criteria
+      const response = await apiClient.get(`/records?${filterParams.toString()}&limit=10000`);
+      
+      if (response.data.success) {
+        const allResults = response.data.data || [];
+        console.log(`✅ Found ${allResults.length} NPA NXX records matching filter criteria`);
+        
+        setSearchResults(allResults);
+        setOriginalSearchResults(allResults); // Store original results for filter reset
+        
+        if (allResults.length === 0) {
+          setError(`No NPA NXX records found matching the filter criteria for zipcodes: ${zipcodesToSearch.join(', ')}`);
+        } else {
+          message.success(`Found ${allResults.length} NPA NXX records matching filter criteria across ${zipcodesToSearch.length} zipcode(s)`);
+          
+          // Check for latest telecare run (use first zipcode for now)
+          try {
+            const latestRunResponse = await telecareApi.getLatestRun(zipcodesToSearch[0].trim());
+            if (latestRunResponse.success) {
+              setLatestRun(latestRunResponse.data);
+            }
+          } catch (error) {
+            console.log('No previous telecare runs found');
+          }
+        }
+      } else {
+        throw new Error(response.data.message || 'Failed to fetch NPA NXX records');
+      }
+    } catch (error: any) {
+      console.error('❌ Error searching with filter criteria:', error);
+      setError(error.response?.data?.message || 'An error occurred during search');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -166,7 +293,7 @@ const ComprehensiveDashboard: React.FC = () => {
       const allResults: NpaNxxRecord[] = [];
       const searchPromises = zipcodesToSearch.map(async (zipcode) => {
         try {
-          const response = await apiClient.get(`/records/zip/${zipcode.trim()}`);
+          const response = await apiClient.get(`/records/zip/${zipcode.trim()}?_t=${Date.now()}`);
           if (response.data.success) {
             return response.data.data || [];
           } else {
@@ -190,6 +317,7 @@ const ComprehensiveDashboard: React.FC = () => {
       });
       
       setSearchResults(allResults);
+      setOriginalSearchResults(allResults); // Store original results for filter reset
       if (allResults.length === 0) {
         setError(`No NPA NXX records found for the selected zipcodes: ${zipcodesToSearch.join(', ')}`);
       } else {
@@ -478,26 +606,52 @@ const ComprehensiveDashboard: React.FC = () => {
     setError('');
 
     try {
-      // For now, we'll use the first zipcode and generate from telecare output
-      // This assumes we have a telecare run for this zipcode
-      const zip = searchZipcodes[0];
-      
-      // We need to find the telecare run for this zipcode
-      // For now, let's show a message that this feature needs a telecare run
-      message.info('Phone number generation requires a completed telecare run. Please process the zipcode through telecare first.');
-      setProcessingStatus('');
-      
-      // TODO: Implement actual phone number generation logic
-      // This would involve:
-      // 1. Finding the telecare run for this zipcode
-      // 2. Calling the phone number generation API
-      // 3. Monitoring the job status
+      // Generate phone numbers directly from NPA NXX records for all selected zipcodes
+      const uniqueZipcodes = Array.from(new Set(searchZipcodes));
+      let successCount = 0;
+      let failureCount = 0;
+
+      for (const zip of uniqueZipcodes) {
+        try {
+          setProcessingStatus(`Generating phone numbers for ${zip}...`);
+          
+          // Use the new direct NPA NXX generation (no telecare required)
+          const response = await phoneNumberApi.generateFromNpaNxxRecords(zip);
+          
+          if (response.success) {
+            successCount++;
+            console.log(`✅ Phone number generation started for ${zip}`);
+          } else {
+            failureCount++;
+            console.error(`❌ Failed for ${zip}:`, response.message);
+          }
+        } catch (error: any) {
+          failureCount++;
+          console.error(`❌ Error for ${zip}:`, error);
+        }
+
+        // Small delay to prevent overwhelming the server
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+
+      // Show summary message
+      if (successCount > 0 && failureCount === 0) {
+        message.success(`Phone number generation started for all ${successCount} zipcodes! Check the jobs section for progress.`);
+      } else if (successCount > 0) {
+        message.warning(`Phone number generation started for ${successCount} zipcodes, ${failureCount} failed. Check the jobs section for progress.`);
+      } else {
+        message.error(`Phone number generation failed for all ${failureCount} zipcodes.`);
+      }
+
+      // Refresh phone number jobs
+      refreshPhoneNumberJobs();
       
     } catch (error: any) {
       setError(error.message || 'An error occurred during phone number generation');
-      setProcessingStatus('');
+      message.error('Failed to start phone number generation');
     } finally {
       setProcessing(false);
+      setProcessingStatus('');
     }
   };
 
@@ -1520,10 +1674,13 @@ const ComprehensiveDashboard: React.FC = () => {
                 <Button
                   icon={<DownloadOutlined />}
                   onClick={() => {
-                    const csvContent = searchResults.map(record => 
-                      `${record.npa},${record.nxx},${record.zip},${record.state_code},${record.city},${record.rc}`
-                    ).join('\n');
-                    const csvHeader = 'NPA,NXX,ZIP,STATE,CITY,RC\n';
+                    const csvContent = searchResults.map(record => {
+                      const timezoneInfo = record.timezone_display_name ? 
+                        `${record.timezone_display_name} (${record.abbreviation_standard})` : 
+                        '';
+                      return `${record.npa},${record.nxx},${record.zip},${record.state_code},${record.city},${record.rc},${timezoneInfo}`;
+                    }).join('\n');
+                    const csvHeader = 'NPA,NXX,ZIP,STATE,CITY,RC,TIMEZONE\n';
                     const blob = new Blob([csvHeader + csvContent], { type: 'text/csv' });
                     const url = window.URL.createObjectURL(blob);
                     const a = document.createElement('a');
@@ -1534,6 +1691,104 @@ const ComprehensiveDashboard: React.FC = () => {
                   }}
                 >
                   Export CSV
+                </Button>
+              </div>
+            </div>
+
+            {/* NPA NXX Table Filters */}
+            <div className={`mb-4 p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
+              <h3 className="text-lg font-semibold mb-3">Filter NPA NXX Records</h3>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    State
+                  </label>
+                  <Select
+                    mode="multiple"
+                    placeholder="Select states"
+                    style={{ width: '100%' }}
+                    onChange={(values) => {
+                      const filteredResults = searchResults.filter(record => 
+                        values.length === 0 || values.includes(record.state_code)
+                      );
+                      setSearchResults(filteredResults);
+                    }}
+                    options={Array.from(new Set(searchResults.map(r => r.state_code))).map(state => ({
+                      label: state,
+                      value: state
+                    }))}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Timezone
+                  </label>
+                  <Select
+                    mode="multiple"
+                    placeholder="Select timezones"
+                    style={{ width: '100%' }}
+                    onChange={(values) => {
+                      const filteredResults = searchResults.filter(record => 
+                        values.length === 0 || values.includes(record.timezone_display_name)
+                      );
+                      setSearchResults(filteredResults);
+                    }}
+                    options={Array.from(new Set(searchResults.map(r => r.timezone_display_name).filter(Boolean))).map(timezone => ({
+                      label: timezone,
+                      value: timezone
+                    }))}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    City
+                  </label>
+                  <Select
+                    mode="multiple"
+                    placeholder="Select cities"
+                    style={{ width: '100%' }}
+                    onChange={(values) => {
+                      const filteredResults = searchResults.filter(record => 
+                        values.length === 0 || values.includes(record.city)
+                      );
+                      setSearchResults(filteredResults);
+                    }}
+                    options={Array.from(new Set(searchResults.map(r => r.city).filter(Boolean))).map(city => ({
+                      label: city,
+                      value: city
+                    }))}
+                  />
+                </div>
+                <div>
+                  <label className={`block text-sm font-medium mb-1 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                    Rate Center
+                  </label>
+                  <Select
+                    mode="multiple"
+                    placeholder="Select rate centers"
+                    style={{ width: '100%' }}
+                    onChange={(values) => {
+                      const filteredResults = searchResults.filter(record => 
+                        values.length === 0 || values.includes(record.rc)
+                      );
+                      setSearchResults(filteredResults);
+                    }}
+                    options={Array.from(new Set(searchResults.map(r => r.rc).filter(Boolean))).map(rc => ({
+                      label: rc,
+                      value: rc
+                    }))}
+                  />
+                </div>
+              </div>
+              <div className="mt-3">
+                <Button 
+                  size="small" 
+                  onClick={() => {
+                    // Reset to original results
+                    setSearchResults(originalSearchResults);
+                  }}
+                >
+                  Clear Filters
                 </Button>
               </div>
             </div>
@@ -1567,6 +1822,12 @@ const ComprehensiveDashboard: React.FC = () => {
                       <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
                         isDarkMode ? 'text-gray-300' : 'text-gray-500'
                       }`}>RC</th>
+                      <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                        isDarkMode ? 'text-gray-300' : 'text-gray-500'
+                      }`}>TIMEZONE</th>
+                      <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
+                        isDarkMode ? 'text-gray-300' : 'text-gray-500'
+                      }`}>TIMEZONE ID</th>
                       <th className={`px-6 py-3 text-left text-xs font-medium uppercase tracking-wider ${
                         isDarkMode ? 'text-gray-300' : 'text-gray-500'
                       }`}>CREATED AT</th>
@@ -1607,6 +1868,25 @@ const ComprehensiveDashboard: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 text-sm font-mono text-gray-600 dark:text-gray-400">
                           {record.rc}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {record.timezone_display_name ? (
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              isDarkMode ? 'bg-purple-900 text-purple-200' : 'bg-purple-100 text-purple-800'
+                            }`}>
+                              {record.observes_dst && record.abbreviation_daylight ? 
+                                record.abbreviation_daylight : 
+                                record.abbreviation_standard || 'N/A'
+                              }
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className={`px-6 py-4 whitespace-nowrap text-sm font-mono ${
+                          isDarkMode ? 'text-gray-300' : 'text-gray-600'
+                        }`}>
+                          {record.timezone_id || '-'}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                           {formatDate(record.created_at)}

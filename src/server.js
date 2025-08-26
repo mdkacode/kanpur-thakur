@@ -17,20 +17,50 @@ const demographicRecordRoutes = require('./routes/demographicRecordRoutes');
 const telecareRoutes = require('./routes/telecareRoutes');
 const filterRoutes = require('./routes/filterRoutes');
 const phoneNumberRoutes = require('./routes/phoneNumberRoutes');
+const timezoneRoutes = require('./routes/timezoneRoutes');
 const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust proxy configuration (fixes express-rate-limit X-Forwarded-For warning)
+// In development, trust localhost. In production, configure based on your proxy setup.
+if (process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1); // Trust first proxy in production
+} else {
+  app.set('trust proxy', 'loopback'); // Trust localhost in development
+}
+
 // Security middleware
 app.use(helmet());
 
-// CORS configuration
+// CORS configuration - Allow all origins with better browser compatibility
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://yourdomain.com'] 
-    : ['http://localhost:3000', 'http://localhost:3001'],
-  credentials: true
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    // Allow all origins
+    return callback(null, true);
+  },
+  credentials: true, // Allow credentials for authenticated requests
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
+  allowedHeaders: [
+    'Origin', 
+    'X-Requested-With', 
+    'Content-Type', 
+    'Accept', 
+    'Authorization', 
+    'Cache-Control',
+    'X-HTTP-Method-Override',
+    'Referer',
+    'User-Agent',
+    'sec-ch-ua',
+    'sec-ch-ua-mobile',
+    'sec-ch-ua-platform'
+  ],
+  exposedHeaders: ['set-cookie'],
+  optionsSuccessStatus: 200, // Some legacy browsers choke on 204
+  preflightContinue: false
 }));
 
 // Compression middleware
@@ -79,6 +109,7 @@ app.use('/api/v1/demographic', demographicUploadRoutes);
 app.use('/api/v1/telecare', telecareRoutes);
 app.use('/api/v1/filters', filterRoutes);
 app.use('/api/v1/phone-numbers', phoneNumberRoutes);
+app.use('/api/v1/timezones', timezoneRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

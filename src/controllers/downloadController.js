@@ -41,6 +41,8 @@ const downloadController = {
           state_code: 'State',
           city: 'City',
           rc: 'RC',
+          timezone_display_name: 'Timezone',
+          abbreviation_standard: 'Timezone Abbr',
           created_at: 'Created At'
         }
       });

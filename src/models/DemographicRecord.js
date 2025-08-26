@@ -120,9 +120,23 @@ class DemographicRecord {
       const limitNum = parseInt(limit) || 50;
       const offset = (pageNum - 1) * limitNum;
       
-      let query = 'SELECT * FROM demographic_records';
-      let countQuery = 'SELECT COUNT(*) FROM demographic_records';
-      let zipcodesQuery = 'SELECT DISTINCT zipcode FROM demographic_records';
+      let query = `
+        SELECT dr.*, 
+               tz.id as timezone_id,
+               tz.timezone_name,
+               tz.display_name as timezone_display_name,
+               tz.abbreviation_standard,
+               tz.abbreviation_daylight,
+               tz.utc_offset_standard,
+               tz.utc_offset_daylight,
+               tz.observes_dst,
+               tz.description as timezone_description,
+               tz.states as timezone_states
+        FROM demographic_records dr
+        LEFT JOIN timezones tz ON dr.timezone_id = tz.id
+      `;
+      let countQuery = 'SELECT COUNT(*) FROM demographic_records dr LEFT JOIN timezones tz ON dr.timezone_id = tz.id';
+      let zipcodesQuery = 'SELECT DISTINCT dr.zipcode FROM demographic_records dr LEFT JOIN timezones tz ON dr.timezone_id = tz.id';
       let whereConditions = [];
       let values = [];
       let valueIndex = 1;
@@ -132,7 +146,7 @@ class DemographicRecord {
         const searchableColumns = ['zipcode', 'state', 'county', 'city'];
         const searchConditions = searchableColumns
           .filter(col => columns.includes(col))
-          .map(col => `${col} ILIKE $${valueIndex}`);
+          .map(col => `dr.${col} ILIKE $${valueIndex}`);
         
         if (searchConditions.length > 0) {
           whereConditions.push(`(${searchConditions.join(' OR ')})`);
@@ -143,19 +157,65 @@ class DemographicRecord {
 
       // Basic filters - exact matches
       Object.entries(filters).forEach(([key, value]) => {
-        if (columns.includes(key) && value && value !== '' && value !== 'All States') {
+        // Special handling for timezone filters - always use timezone_id
+        if (key === 'timezone' && value && value !== '') {
+          console.log(`🔍 Processing timezone filter: key=${key}, value=${value}, type=${typeof value}`);
+          if (Array.isArray(value) && value.length > 0) {
+            // Convert all values to timezone IDs
+            const timezoneIds = [];
+            for (const v of value) {
+              const trimmed = v.trim();
+              // If it's already a number, use it as is
+              if (!isNaN(parseInt(trimmed))) {
+                timezoneIds.push(parseInt(trimmed));
+              } else {
+                // If it's a display name, convert it to ID using a subquery
+                console.log(`🔄 Converting timezone display name "${trimmed}" to ID`);
+                const subQuery = `(SELECT id FROM timezones WHERE display_name = $${valueIndex})`;
+                whereConditions.push(`tz.id = ${subQuery}`);
+                values.push(trimmed);
+                valueIndex++;
+              }
+            }
+            
+            if (timezoneIds.length > 0) {
+              const placeholders = timezoneIds.map((_, index) => `$${valueIndex + index}`).join(', ');
+              whereConditions.push(`tz.id IN (${placeholders})`);
+              values.push(...timezoneIds);
+              valueIndex += timezoneIds.length;
+              console.log(`✅ Added timezone ID IN filter: tz.id IN (${placeholders}) with values:`, timezoneIds);
+            }
+          } else if (typeof value === 'string' && value.trim() !== '') {
+            const trimmed = value.trim();
+            // If it's already a number, use it as is
+            if (!isNaN(parseInt(trimmed))) {
+              whereConditions.push(`tz.id = $${valueIndex}`);
+              values.push(parseInt(trimmed));
+              valueIndex++;
+              console.log(`✅ Added timezone ID exact filter: tz.id = $${valueIndex-1} with value: ${parseInt(trimmed)}`);
+            } else {
+              // If it's a display name, convert it to ID using a subquery
+              console.log(`🔄 Converting timezone display name "${trimmed}" to ID`);
+              const subQuery = `(SELECT id FROM timezones WHERE display_name = $${valueIndex})`;
+              whereConditions.push(`tz.id = ${subQuery}`);
+              values.push(trimmed);
+              valueIndex++;
+              console.log(`✅ Added timezone display name conversion filter: tz.id = ${subQuery} with value: ${trimmed}`);
+            }
+          }
+        } else if (columns.includes(key) && value && value !== '' && value !== 'All States') {
           if (Array.isArray(value) && value.length > 0) {
             // Handle multiselect arrays - use IN clause
             console.log(`✅ Adding IN filter for ${key} IN [${value.join(', ')}]`);
             const placeholders = value.map((_, index) => `$${valueIndex + index}`).join(', ');
-            whereConditions.push(`${key} IN (${placeholders})`);
+            whereConditions.push(`dr.${key} IN (${placeholders})`);
             values.push(...value.map(v => v.trim()));
             console.log(`🔍 Added ${value.length} values for ${key}:`, value.map(v => v.trim()));
             valueIndex += value.length;
           } else if (typeof value === 'string' && value.trim() !== '') {
             // Handle single string values
             console.log(`✅ Adding exact match filter for ${key} = ${value.trim()}`);
-            whereConditions.push(`${key} = $${valueIndex}`);
+            whereConditions.push(`dr.${key} = $${valueIndex}`);
             values.push(value.trim());
             valueIndex++;
           }
@@ -166,7 +226,49 @@ class DemographicRecord {
       console.log('🔍 Processing advanced filters:', advancedFilters);
       
       Object.entries(advancedFilters).forEach(([key, value]) => {
-        if (!value || value === '' || value.trim() === '') return;
+        if (!value || value === '') return;
+        
+        // Handle array filters (county, city, timezone)
+        if ((key === 'county' || key === 'city' || key === 'timezone') && Array.isArray(value) && value.length > 0) {
+          console.log(`✅ Adding array filter for ${key} IN [${value.join(', ')}]`);
+          const placeholders = value.map((_, index) => `$${valueIndex + index}`).join(', ');
+          
+          if (key === 'timezone') {
+            // Convert all values to timezone IDs
+            const timezoneIds = [];
+            for (const v of value) {
+              const trimmed = v.toString().trim();
+              // If it's already a number, use it as is
+              if (!isNaN(parseInt(trimmed))) {
+                timezoneIds.push(parseInt(trimmed));
+              } else {
+                // If it's a display name, convert it to ID using a subquery
+                console.log(`🔄 Converting timezone display name "${trimmed}" to ID in advanced filters`);
+                const subQuery = `(SELECT id FROM timezones WHERE display_name = $${valueIndex})`;
+                whereConditions.push(`tz.id = ${subQuery}`);
+                values.push(trimmed);
+                valueIndex++;
+              }
+            }
+            
+            if (timezoneIds.length > 0) {
+              const placeholders = timezoneIds.map((_, index) => `$${valueIndex + index}`).join(', ');
+              whereConditions.push(`tz.id IN (${placeholders})`);
+              values.push(...timezoneIds);
+              valueIndex += timezoneIds.length;
+              console.log(`✅ Added advanced timezone ID filter: tz.id IN (${placeholders}) with values:`, timezoneIds);
+            }
+          } else {
+            whereConditions.push(`dr.${key} IN (${placeholders})`);
+          }
+          
+          values.push(...value.map(v => v.toString().trim()));
+          valueIndex += value.length;
+          return;
+        }
+        
+        // Skip processing if value is empty string after array check
+        if (typeof value === 'string' && value.trim() === '') return;
         
         console.log(`🔍 Processing filter: ${key} = ${value}`);
         
@@ -185,13 +287,13 @@ class DemographicRecord {
             // Handle percentage fields specially
             if (baseKey === 'unemployment_pct' || baseKey === 'pct_hh_w_income_200k_plus') {
               // For percentage fields, remove % symbol and compare as numeric
-              whereConditions.push(`CAST(REPLACE(${baseKey}, '%', '') AS NUMERIC) >= $${valueIndex}`);
+              whereConditions.push(`CAST(REPLACE(dr.${baseKey}, '%', '') AS NUMERIC) >= $${valueIndex}`);
             } else if (baseKey.includes('race_ethnicity')) {
               // For race fields, convert directly to numeric (no % symbol)
-              whereConditions.push(`CAST(${baseKey} AS NUMERIC) >= $${valueIndex}`);
+              whereConditions.push(`CAST(dr.${baseKey} AS NUMERIC) >= $${valueIndex}`);
             } else {
               // For other numeric fields, handle currency and commas
-              whereConditions.push(`CAST(REPLACE(REPLACE(REPLACE(${baseKey}, '%', ''), '$', ''), ',', '') AS NUMERIC) >= $${valueIndex}`);
+              whereConditions.push(`CAST(REPLACE(REPLACE(REPLACE(dr.${baseKey}, '%', ''), '$', ''), ',', '') AS NUMERIC) >= $${valueIndex}`);
             }
             values.push(numericValue);
             valueIndex++;
@@ -213,13 +315,13 @@ class DemographicRecord {
             // Handle percentage fields specially
             if (baseKey === 'unemployment_pct' || baseKey === 'pct_hh_w_income_200k_plus') {
               // For percentage fields, remove % symbol and compare as numeric
-              whereConditions.push(`CAST(REPLACE(${baseKey}, '%', '') AS NUMERIC) <= $${valueIndex}`);
+              whereConditions.push(`CAST(REPLACE(dr.${baseKey}, '%', '') AS NUMERIC) <= $${valueIndex}`);
             } else if (baseKey.includes('race_ethnicity')) {
               // For race fields, convert directly to numeric (no % symbol)
-              whereConditions.push(`CAST(${baseKey} AS NUMERIC) <= $${valueIndex}`);
+              whereConditions.push(`CAST(dr.${baseKey} AS NUMERIC) <= $${valueIndex}`);
             } else {
               // For other numeric fields, handle currency and commas
-              whereConditions.push(`CAST(REPLACE(REPLACE(REPLACE(${baseKey}, '%', ''), '$', ''), ',', '') AS NUMERIC) <= $${valueIndex}`);
+              whereConditions.push(`CAST(REPLACE(REPLACE(REPLACE(dr.${baseKey}, '%', ''), '$', ''), ',', '') AS NUMERIC) <= $${valueIndex}`);
             }
             values.push(numericValue);
             valueIndex++;
@@ -421,8 +523,6 @@ class DemographicRecord {
           FROM demographic_records 
           WHERE ${field} IS NOT NULL 
           AND ${field} != '' 
-          AND ${field} != '-$1' 
-          AND ${field} != '-1'
           AND ${field} ILIKE $1
           ORDER BY ${field}
           LIMIT $2
@@ -436,8 +536,6 @@ class DemographicRecord {
           FROM demographic_records 
           WHERE ${field} IS NOT NULL 
           AND ${field} != '' 
-          AND ${field} != '-$1' 
-          AND ${field} != '-1'
           ORDER BY ${field}
           LIMIT $1
         `;
@@ -449,7 +547,7 @@ class DemographicRecord {
       const result = await db.query(query, params);
       console.log('🔍 Query result rows:', result.rows.length);
       
-      const filteredValues = result.rows.map(row => row[field]).filter(value => value !== '-$1' && value !== '-1');
+      const filteredValues = result.rows.map(row => row[field]).filter(value => value !== null && value !== '');
       console.log('🔍 Filtered values:', filteredValues);
       
       return filteredValues;

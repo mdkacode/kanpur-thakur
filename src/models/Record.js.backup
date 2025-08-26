@@ -121,17 +121,9 @@ class Record {
     }
 
     if (filters.zip) {
-      if (Array.isArray(filters.zip)) {
-        const placeholders = filters.zip.map(() => `$${valueIndex++}`).join(', ');
-        whereConditions.push(`r.zip IN (${placeholders})`);
-        values.push(...filters.zip);
-        console.log(`✅ Added zip IN filter: r.zip IN (${placeholders}) with values:`, filters.zip);
-      } else {
-        whereConditions.push(`r.zip = $${valueIndex}`);
-        values.push(filters.zip);
-        valueIndex++;
-        console.log(`✅ Added zip exact filter: r.zip = $${valueIndex-1} with value: ${filters.zip}`);
-      }
+      whereConditions.push(`r.zip = $${valueIndex}`);
+      values.push(filters.zip);
+      valueIndex++;
     }
 
     if (filters.state_code) {
@@ -279,17 +271,9 @@ class Record {
     }
 
     if (filters.zip) {
-      if (Array.isArray(filters.zip)) {
-        const placeholders = filters.zip.map(() => `$${valueIndex++}`).join(', ');
-        whereConditions.push(`r.zip IN (${placeholders})`);
-        values.push(...filters.zip);
-        console.log(`✅ Added zip IN filter: r.zip IN (${placeholders}) with values:`, filters.zip);
-      } else {
-        whereConditions.push(`r.zip = $${valueIndex}`);
-        values.push(filters.zip);
-        valueIndex++;
-        console.log(`✅ Added zip exact filter: r.zip = $${valueIndex-1} with value: ${filters.zip}`);
-      }
+      whereConditions.push(`r.zip = $${valueIndex}`);
+      values.push(filters.zip);
+      valueIndex++;
     }
 
     if (filters.state_code) {

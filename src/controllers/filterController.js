@@ -235,6 +235,12 @@ class FilterController {
           ? filterConfig.city 
           : filterConfig.city.split(',').map(s => s.trim()).filter(s => s);
       }
+      if (filterConfig.timezone) {
+        filters.timezone = Array.isArray(filterConfig.timezone) 
+          ? filterConfig.timezone 
+          : filterConfig.timezone.split(',').map(s => s.trim()).filter(s => s);
+        console.log('🔍 Processed timezone filter:', filters.timezone);
+      }
 
       // Process advanced filters (numeric ranges)
       const advancedFilters = {};
@@ -247,6 +253,16 @@ class FilterController {
         'edu_att_bachelors_min', 'edu_att_bachelors_max', 'unemployment_pct_min', 'unemployment_pct_max',
         'housing_units_min', 'housing_units_max', 'owner_occupied_min', 'owner_occupied_max'
       ];
+
+      // Process array-based filters (multiselect fields)
+      const arrayFields = ['mhhi', 'avg_hhi', 'median_age', 'households', 'race_ethnicity_white', 'race_ethnicity_black', 'race_ethnicity_hispanic'];
+      arrayFields.forEach(field => {
+        if (filterConfig[field]) {
+          advancedFilters[field] = Array.isArray(filterConfig[field]) 
+            ? filterConfig[field] 
+            : filterConfig[field].split(',').map(s => s.trim()).filter(s => s);
+        }
+      });
 
       numericFields.forEach(field => {
         if (filterConfig[field] && filterConfig[field].toString().trim() !== '') {

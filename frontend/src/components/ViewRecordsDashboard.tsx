@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { Card, Button, Row, Col, Form, Input, Select, message, Collapse, Divider, Typography, Space, Badge, Tooltip, Layout } from 'antd';
-import { ReloadOutlined, SaveOutlined, BookFilled, EyeOutlined, FilterOutlined, MenuOutlined, DownloadOutlined } from '@ant-design/icons';
+import { Card, Button, Row, Col, Form, Input, Select, message, Collapse, Divider, Typography, Space, Badge, Tooltip, Layout, Tag, Table } from 'antd';
+import { ReloadOutlined, SaveOutlined, BookFilled, EyeOutlined, FilterOutlined, MenuOutlined, DownloadOutlined, SearchOutlined, PhoneOutlined } from '@ant-design/icons';
 import apiClient from '../api/client';
 import AdvancedFilters from './AdvancedFilters';
 import { FilterConfig } from '../api/filterApi';
 import { DemographicRecord } from './DemographicRecords';
+import timezoneApi from '../api/timezoneApi';
 
 const { Title, Text } = Typography;
 const { Panel } = Collapse;
@@ -24,6 +25,14 @@ const ViewRecordsDashboard: React.FC = () => {
   const [advancedFilters, setAdvancedFilters] = useState({
     county: [] as string[],
     city: [] as string[],
+    timezone: [] as string[],
+    mhhi: [] as string[],
+    avg_hhi: [] as string[],
+    median_age: [] as string[],
+    households: [] as string[],
+    race_ethnicity_white: [] as string[],
+    race_ethnicity_black: [] as string[],
+    race_ethnicity_hispanic: [] as string[],
     mhhi_min: '',
     mhhi_max: '',
     avg_hhi_min: '',
@@ -75,14 +84,158 @@ const ViewRecordsDashboard: React.FC = () => {
   const [loadingCounties, setLoadingCounties] = useState(false);
   const [loadingCities, setLoadingCities] = useState(false);
 
+  // New state for Excel-like functionality
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  
+  // State for storing all unique filter values (not just current page)
+  const [allZipcodes, setAllZipcodes] = useState<string[]>([]);
+  const [allStates, setAllStates] = useState<string[]>([]);
+  const [allCounties, setAllCounties] = useState<string[]>([]);
+  const [allCities, setAllCities] = useState<string[]>([]);
+  const [allTimezoneOptions, setAllTimezoneOptions] = useState<any[]>([]);
+  const [allMhhiValues, setAllMhhiValues] = useState<string[]>([]);
+  const [allAvgHhiValues, setAllAvgHhiValues] = useState<string[]>([]);
+  const [allMedianAgeValues, setAllMedianAgeValues] = useState<string[]>([]);
+  const [allHouseholdsValues, setAllHouseholdsValues] = useState<string[]>([]);
+  const [allRaceWhiteValues, setAllRaceWhiteValues] = useState<string[]>([]);
+  const [allRaceBlackValues, setAllRaceBlackValues] = useState<string[]>([]);
+  const [allRaceHispanicValues, setAllRaceHispanicValues] = useState<string[]>([]);
+
   const { isAuthenticated } = useAuth();
   const { isDarkMode } = useTheme();
   const [form] = Form.useForm();
 
-  // Load saved filters on component mount
+  // Load saved filters and unique values on component mount
   useEffect(() => {
     loadSavedFilters();
-  }, []);
+    if (isAuthenticated) {
+      loadAllUniqueValues();
+    }
+  }, [isAuthenticated]);
+
+  // Fetch records when filters change
+  useEffect(() => {
+    console.log('🔄 Filters changed, refetching data...');
+    fetchRecords();
+  }, [zipcodeFilter, stateFilter, advancedFilters, currentPage, pageSize]);
+
+  // Function to load all unique values for filters
+  const loadAllUniqueValues = async () => {
+    if (!isAuthenticated) {
+      console.log('⚠️ User not authenticated, skipping unique values load');
+      return;
+    }
+    try {
+      // Fetch all unique zipcodes
+      const zipcodesResponse = await apiClient.get('/demographic/records/unique/zipcode?limit=1000');
+      if (zipcodesResponse.data.success) {
+        const zipcodes = zipcodesResponse.data.data || [];
+        setAllZipcodes(zipcodes);
+        console.log(`✅ Loaded ${zipcodes.length} unique zipcodes for filters`);
+      }
+
+      // Fetch all unique states
+      const statesResponse = await apiClient.get('/demographic/records/unique/state?limit=100');
+      if (statesResponse.data.success) {
+        const states = statesResponse.data.data || [];
+        setAllStates(states);
+        console.log(`✅ Loaded ${states.length} unique states for filters`);
+      }
+
+      // Fetch all unique counties
+      const countiesResponse = await apiClient.get('/demographic/records/unique/county?limit=1000');
+      if (countiesResponse.data.success) {
+        const counties = countiesResponse.data.data || [];
+        setAllCounties(counties);
+        console.log(`✅ Loaded ${counties.length} unique counties for filters`);
+      }
+
+      // Fetch all unique cities
+      const citiesResponse = await apiClient.get('/demographic/records/unique/city?limit=1000');
+      if (citiesResponse.data.success) {
+        const cities = citiesResponse.data.data || [];
+        setAllCities(cities);
+        console.log(`✅ Loaded ${cities.length} unique cities for filters`);
+      }
+
+      // Fetch all timezone options
+      const timezoneOptions = await timezoneApi.getTimezoneOptions();
+      setAllTimezoneOptions(timezoneOptions);
+      console.log(`✅ Loaded ${timezoneOptions.length} timezone options for filters`);
+
+
+      // Fetch all unique numeric values
+      const mhhiResponse = await apiClient.get('/demographic/records/unique/mhhi?limit=1000');
+      if (mhhiResponse.data.success) {
+        const mhhiValues = mhhiResponse.data.data || [];
+        setAllMhhiValues(mhhiValues);
+        console.log(`✅ Loaded ${mhhiValues.length} unique Median HHI values for filters`);
+      }
+
+      const avgHhiResponse = await apiClient.get('/demographic/records/unique/avg_hhi?limit=1000');
+      if (avgHhiResponse.data.success) {
+        const avgHhiValues = avgHhiResponse.data.data || [];
+        setAllAvgHhiValues(avgHhiValues);
+        console.log(`✅ Loaded ${avgHhiValues.length} unique Average HHI values for filters`);
+      }
+
+      const medianAgeResponse = await apiClient.get('/demographic/records/unique/median_age?limit=1000');
+      if (medianAgeResponse.data.success) {
+        const medianAgeValues = medianAgeResponse.data.data || [];
+        setAllMedianAgeValues(medianAgeValues);
+        console.log(`✅ Loaded ${medianAgeValues.length} unique Median Age values for filters`);
+      }
+
+      const householdsResponse = await apiClient.get('/demographic/records/unique/households?limit=1000');
+      if (householdsResponse.data.success) {
+        const householdsValues = householdsResponse.data.data || [];
+        setAllHouseholdsValues(householdsValues);
+        console.log(`✅ Loaded ${householdsValues.length} unique Households values for filters`);
+      }
+
+      const raceWhiteResponse = await apiClient.get('/demographic/records/unique/race_ethnicity_white?limit=1000');
+      if (raceWhiteResponse.data.success) {
+        const raceWhiteValues = raceWhiteResponse.data.data || [];
+        setAllRaceWhiteValues(raceWhiteValues);
+        console.log(`✅ Loaded ${raceWhiteValues.length} unique White population values for filters`);
+      }
+
+      const raceBlackResponse = await apiClient.get('/demographic/records/unique/race_ethnicity_black?limit=1000');
+      if (raceBlackResponse.data.success) {
+        const raceBlackValues = raceBlackResponse.data.data || [];
+        setAllRaceBlackValues(raceBlackValues);
+        console.log(`✅ Loaded ${raceBlackValues.length} unique Black population values for filters`);
+      }
+
+      const raceHispanicResponse = await apiClient.get('/demographic/records/unique/race_ethnicity_hispanic?limit=1000');
+      if (raceHispanicResponse.data.success) {
+        const raceHispanicValues = raceHispanicResponse.data.data || [];
+        setAllRaceHispanicValues(raceHispanicValues);
+        console.log(`✅ Loaded ${raceHispanicValues.length} unique Hispanic population values for filters`);
+      }
+          } catch (error: any) {
+        console.error('Error loading unique values for filters:', error);
+        if (error.response?.status === 401) {
+          console.error('Authentication error - user may need to log in');
+        } else if (error.response?.status === 403) {
+          console.error('Access denied - insufficient permissions');
+        } else {
+          console.error('Network or server error:', error.message);
+        }
+        
+        // Fallback: use current page data for filters if server-side loading fails
+        console.log('🔄 Using fallback filter values from current page data');
+        if (records.length > 0) {
+          setAllMhhiValues(Array.from(new Set(records.map(record => record.mhhi).filter(Boolean))));
+          setAllAvgHhiValues(Array.from(new Set(records.map(record => record.avg_hhi).filter(Boolean))));
+          setAllMedianAgeValues(Array.from(new Set(records.map(record => record.median_age).filter(Boolean))));
+          setAllHouseholdsValues(Array.from(new Set(records.map(record => record.households).filter(Boolean))));
+          setAllRaceWhiteValues(Array.from(new Set(records.map(record => record.race_ethnicity_white).filter(Boolean))));
+          setAllRaceBlackValues(Array.from(new Set(records.map(record => record.race_ethnicity_black).filter(Boolean))));
+          setAllRaceHispanicValues(Array.from(new Set(records.map(record => record.race_ethnicity_hispanic).filter(Boolean))));
+        }
+      }
+  };
 
   const loadSavedFilters = async () => {
     setLoadingSavedFilters(true);
@@ -358,6 +511,14 @@ const ViewRecordsDashboard: React.FC = () => {
     setAdvancedFilters({
       county: [],
       city: [],
+      timezone: [],
+      mhhi: [],
+      avg_hhi: [],
+      median_age: [],
+      households: [],
+      race_ethnicity_white: [],
+      race_ethnicity_black: [],
+      race_ethnicity_hispanic: [],
       mhhi_min: '',
       mhhi_max: '',
       avg_hhi_min: '',
@@ -418,6 +579,17 @@ const ViewRecordsDashboard: React.FC = () => {
       if (stateFilter.length > 0) allFilters.state = stateFilter.join(',');
       if (advancedFilters.county?.length > 0) allFilters.county = advancedFilters.county.join(',');
       if (advancedFilters.city?.length > 0) allFilters.city = advancedFilters.city.join(',');
+      if (advancedFilters.timezone?.length > 0) allFilters.timezone = advancedFilters.timezone.join(',');
+      
+      console.log('🔍 Timezone filters being saved:', advancedFilters.timezone);
+      console.log('🔍 All filters being saved:', allFilters);
+      if (advancedFilters.mhhi?.length > 0) allFilters.mhhi = advancedFilters.mhhi.join(',');
+      if (advancedFilters.avg_hhi?.length > 0) allFilters.avg_hhi = advancedFilters.avg_hhi.join(',');
+      if (advancedFilters.median_age?.length > 0) allFilters.median_age = advancedFilters.median_age.join(',');
+      if (advancedFilters.households?.length > 0) allFilters.households = advancedFilters.households.join(',');
+      if (advancedFilters.race_ethnicity_white?.length > 0) allFilters.race_ethnicity_white = advancedFilters.race_ethnicity_white.join(',');
+      if (advancedFilters.race_ethnicity_black?.length > 0) allFilters.race_ethnicity_black = advancedFilters.race_ethnicity_black.join(',');
+      if (advancedFilters.race_ethnicity_hispanic?.length > 0) allFilters.race_ethnicity_hispanic = advancedFilters.race_ethnicity_hispanic.join(',');
       
       // Advanced filters - only include if they have values
       if (advancedFilters.mhhi_min?.trim()) allFilters.mhhi_min = advancedFilters.mhhi_min.trim();
@@ -492,6 +664,14 @@ const ViewRecordsDashboard: React.FC = () => {
       setAdvancedFilters({
         county: config.county ? (Array.isArray(config.county) ? config.county : config.county.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : [],
         city: config.city ? (Array.isArray(config.city) ? config.city : config.city.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : [],
+        timezone: config.timezone ? (Array.isArray(config.timezone) ? config.timezone : config.timezone.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : [],
+        mhhi: config.mhhi ? (Array.isArray(config.mhhi) ? config.mhhi : config.mhhi.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : [],
+        avg_hhi: config.avg_hhi ? (Array.isArray(config.avg_hhi) ? config.avg_hhi : config.avg_hhi.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : [],
+        median_age: config.median_age ? (Array.isArray(config.median_age) ? config.median_age : config.median_age.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : [],
+        households: config.households ? (Array.isArray(config.households) ? config.households : config.households.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : [],
+        race_ethnicity_white: config.race_ethnicity_white ? (Array.isArray(config.race_ethnicity_white) ? config.race_ethnicity_white : config.race_ethnicity_white.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : [],
+        race_ethnicity_black: config.race_ethnicity_black ? (Array.isArray(config.race_ethnicity_black) ? config.race_ethnicity_black : config.race_ethnicity_black.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : [],
+        race_ethnicity_hispanic: config.race_ethnicity_hispanic ? (Array.isArray(config.race_ethnicity_hispanic) ? config.race_ethnicity_hispanic : config.race_ethnicity_hispanic.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : [],
         mhhi_min: config.mhhi_min || '',
         mhhi_max: config.mhhi_max || '',
         avg_hhi_min: config.avg_hhi_min || '',
@@ -543,15 +723,445 @@ const ViewRecordsDashboard: React.FC = () => {
     }
   };
 
-  const formatCurrency = (value: string) => {
-    if (!value || value === '-$1' || value === '') return '-';
-    if (value.startsWith('$')) return value;
-    return `$${parseInt(value).toLocaleString()}`;
-  };
 
-  const formatNumber = (value: string) => {
+
+  const formatNumberString = (value: string) => {
     if (!value || value === '-$1' || value === '') return '-';
     return parseInt(value).toLocaleString();
+  };
+
+  const formatCurrency = (value: number | string) => {
+    if (value == null || value === '') return '';
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(numValue);
+  };
+
+  const formatNumber = (value: number | string) => {
+    if (value == null || value === '') return '';
+    const numValue = typeof value === 'string' ? parseFloat(value) : value;
+    return new Intl.NumberFormat('en-US').format(numValue);
+  };
+
+  // Helper function to determine if daylight saving time is currently in effect
+  const isDaylightSavingTime = (date: Date) => {
+    const year = date.getFullYear();
+    
+    // DST starts on the second Sunday in March
+    const march = new Date(year, 2, 1); // March 1st
+    const firstSundayMarch = new Date(year, 2, 1 + (7 - march.getDay()) % 7);
+    const dstStart = new Date(year, 2, firstSundayMarch.getDate() + 7);
+    
+    // DST ends on the first Sunday in November
+    const november = new Date(year, 10, 1); // November 1st
+    const dstEnd = new Date(year, 10, 1 + (7 - november.getDay()) % 7);
+    
+    return date >= dstStart && date < dstEnd;
+  };
+
+
+
+  // Handle bulk actions on selected rows
+  const handleBulkExport = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('Please select rows to export');
+      return;
+    }
+    
+    const selectedRecords = records.filter(record => selectedRowKeys.includes(record.id));
+    exportToCSV(selectedRecords, 'selected_demographic_records.csv');
+    message.success(`Exported ${selectedRecords.length} selected records`);
+  };
+
+  const handleBulkAction = (action: string) => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('Please select rows first');
+      return;
+    }
+    
+    switch (action) {
+      case 'export':
+        handleBulkExport();
+        break;
+      case 'createFilter':
+        handleSaveFilterFromSelected();
+        break;
+      case 'saveCurrentFilters':
+        handleSaveCurrentTableFilters();
+        break;
+      case 'generatePhoneNumbers':
+        handleGeneratePhoneNumbers();
+        break;
+      default:
+        message.info(`Action "${action}" not implemented yet`);
+    }
+  };
+
+  const handleGeneratePhoneNumbers = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('Please select records to generate phone numbers');
+      return;
+    }
+
+    try {
+      // Extract unique zipcodes from selected records
+      const selectedRecords = records.filter(record => selectedRowKeys.includes(record.id));
+      const zipcodes = Array.from(new Set(selectedRecords.map(record => record.zipcode)));
+      
+      if (zipcodes.length === 0) {
+        message.error('No valid zipcodes found in selected records');
+        return;
+      }
+
+      // Navigate to Comprehensive Dashboard with the zipcodes
+      const params = new URLSearchParams({
+        zipcodes: zipcodes.join(',')
+      });
+      
+      window.location.href = `/dashboard?${params.toString()}`;
+    } catch (error) {
+      console.error('Error generating phone numbers:', error);
+      message.error('Failed to generate phone numbers');
+    }
+  };
+
+  const handleSaveFilterFromSelected = async () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('Please select records to create a filter');
+      return;
+    }
+
+    try {
+      const selectedRecords = records.filter(record => selectedRowKeys.includes(record.id));
+      const zipcodes = Array.from(new Set(selectedRecords.map(record => record.zipcode)));
+      const timezones = Array.from(new Set(selectedRecords.map(record => record.timezone_id).filter(Boolean)));
+      
+      if (zipcodes.length === 0) {
+        message.error('No valid zipcodes found in selected records');
+        return;
+      }
+
+      // Create a filter configuration based on selected records AND current filters
+      const filterConfig: any = {
+        zipcode: zipcodes.join(','),
+        sortBy: sortBy,
+        sortOrder: sortOrder === 'ascend' ? 'ASC' : 'DESC'
+      };
+
+      // Add timezones from selected records
+      if (timezones.length > 0) {
+        filterConfig.timezone = timezones.join(',');
+      }
+
+      // Add current filters if they have values
+      if (searchQuery.trim()) filterConfig.search = searchQuery.trim();
+      if (stateFilter.length > 0) filterConfig.state = stateFilter.join(',');
+      if (advancedFilters.county?.length > 0) filterConfig.county = advancedFilters.county.join(',');
+      if (advancedFilters.city?.length > 0) filterConfig.city = advancedFilters.city.join(',');
+      if (advancedFilters.timezone?.length > 0) filterConfig.timezone = advancedFilters.timezone.join(',');
+      if (advancedFilters.mhhi?.length > 0) filterConfig.mhhi = advancedFilters.mhhi.join(',');
+      if (advancedFilters.avg_hhi?.length > 0) filterConfig.avg_hhi = advancedFilters.avg_hhi.join(',');
+      if (advancedFilters.median_age?.length > 0) filterConfig.median_age = advancedFilters.median_age.join(',');
+      if (advancedFilters.households?.length > 0) filterConfig.households = advancedFilters.households.join(',');
+      if (advancedFilters.race_ethnicity_white?.length > 0) filterConfig.race_ethnicity_white = advancedFilters.race_ethnicity_white.join(',');
+      if (advancedFilters.race_ethnicity_black?.length > 0) filterConfig.race_ethnicity_black = advancedFilters.race_ethnicity_black.join(',');
+      if (advancedFilters.race_ethnicity_hispanic?.length > 0) filterConfig.race_ethnicity_hispanic = advancedFilters.race_ethnicity_hispanic.join(',');
+
+      // Add range filters
+      if (advancedFilters.mhhi_min?.trim()) filterConfig.mhhi_min = advancedFilters.mhhi_min.trim();
+      if (advancedFilters.mhhi_max?.trim()) filterConfig.mhhi_max = advancedFilters.mhhi_max.trim();
+      if (advancedFilters.avg_hhi_min?.trim()) filterConfig.avg_hhi_min = advancedFilters.avg_hhi_min.trim();
+      if (advancedFilters.avg_hhi_max?.trim()) filterConfig.avg_hhi_max = advancedFilters.avg_hhi_max.trim();
+      if (advancedFilters.pc_income_min?.trim()) filterConfig.pc_income_min = advancedFilters.pc_income_min.trim();
+      if (advancedFilters.pc_income_max?.trim()) filterConfig.pc_income_max = advancedFilters.pc_income_max.trim();
+      if (advancedFilters.pct_hh_w_income_200k_plus_min?.trim()) filterConfig.pct_hh_w_income_200k_plus_min = advancedFilters.pct_hh_w_income_200k_plus_min.trim();
+      if (advancedFilters.pct_hh_w_income_200k_plus_max?.trim()) filterConfig.pct_hh_w_income_200k_plus_max = advancedFilters.pct_hh_w_income_200k_plus_max.trim();
+      if (advancedFilters.median_age_min?.trim()) filterConfig.median_age_min = advancedFilters.median_age_min.trim();
+      if (advancedFilters.median_age_max?.trim()) filterConfig.median_age_max = advancedFilters.median_age_max.trim();
+      if (advancedFilters.pop_dens_sq_mi_min?.trim()) filterConfig.pop_dens_sq_mi_min = advancedFilters.pop_dens_sq_mi_min.trim();
+      if (advancedFilters.pop_dens_sq_mi_max?.trim()) filterConfig.pop_dens_sq_mi_max = advancedFilters.pop_dens_sq_mi_max.trim();
+      if (advancedFilters.race_ethnicity_white_min?.trim()) filterConfig.race_ethnicity_white_min = advancedFilters.race_ethnicity_white_min.trim();
+      if (advancedFilters.race_ethnicity_white_max?.trim()) filterConfig.race_ethnicity_white_max = advancedFilters.race_ethnicity_white_max.trim();
+      if (advancedFilters.race_ethnicity_black_min?.trim()) filterConfig.race_ethnicity_black_min = advancedFilters.race_ethnicity_black_min.trim();
+      if (advancedFilters.race_ethnicity_black_max?.trim()) filterConfig.race_ethnicity_black_max = advancedFilters.race_ethnicity_black_max.trim();
+      if (advancedFilters.race_ethnicity_hispanic_min?.trim()) filterConfig.race_ethnicity_hispanic_min = advancedFilters.race_ethnicity_hispanic_min.trim();
+      if (advancedFilters.race_ethnicity_hispanic_max?.trim()) filterConfig.race_ethnicity_hispanic_max = advancedFilters.race_ethnicity_hispanic_max.trim();
+      if (advancedFilters.households_min?.trim()) filterConfig.households_min = advancedFilters.households_min.trim();
+      if (advancedFilters.households_max?.trim()) filterConfig.households_max = advancedFilters.households_max.trim();
+      if (advancedFilters.family_hh_total_min?.trim()) filterConfig.family_hh_total_min = advancedFilters.family_hh_total_min.trim();
+      if (advancedFilters.family_hh_total_max?.trim()) filterConfig.family_hh_total_max = advancedFilters.family_hh_total_max.trim();
+      if (advancedFilters.edu_att_bachelors_min?.trim()) filterConfig.edu_att_bachelors_min = advancedFilters.edu_att_bachelors_min.trim();
+      if (advancedFilters.edu_att_bachelors_max?.trim()) filterConfig.edu_att_bachelors_max = advancedFilters.edu_att_bachelors_max.trim();
+      if (advancedFilters.unemployment_pct_min?.trim()) filterConfig.unemployment_pct_min = advancedFilters.unemployment_pct_min.trim();
+      if (advancedFilters.unemployment_pct_max?.trim()) filterConfig.unemployment_pct_max = advancedFilters.unemployment_pct_max.trim();
+      if (advancedFilters.housing_units_min?.trim()) filterConfig.housing_units_min = advancedFilters.housing_units_min.trim();
+      if (advancedFilters.housing_units_max?.trim()) filterConfig.housing_units_max = advancedFilters.housing_units_max.trim();
+      if (advancedFilters.owner_occupied_min?.trim()) filterConfig.owner_occupied_min = advancedFilters.owner_occupied_min.trim();
+      if (advancedFilters.owner_occupied_max?.trim()) filterConfig.owner_occupied_max = advancedFilters.owner_occupied_max.trim();
+
+      console.log('🔍 Saving filter config with selected zipcodes and current filters:', filterConfig);
+      console.log('🔍 Current advancedFilters state:', advancedFilters);
+      console.log('🔍 Timezone filters in advancedFilters:', advancedFilters.timezone);
+
+      // Prompt user for filter name
+      const filterName = prompt(`Enter a name for this filter (${zipcodes.length} zipcodes, ${timezones.length} timezones + current filters):`);
+      if (!filterName || !filterName.trim()) {
+        message.info('Filter creation cancelled');
+        return;
+      }
+
+      // Save the filter
+      const response = await apiClient.post('/filters', {
+        name: filterName.trim(),
+        filter_type: 'demographic',
+        filter_config: filterConfig
+      });
+
+      if (response.data.success) {
+        message.success(`Filter "${filterName}" saved successfully with ${zipcodes.length} zipcodes, ${timezones.length} timezones and current filters`);
+        await loadSavedFilters(); // Refresh the saved filters list
+      } else {
+        message.error(response.data.message || 'Failed to save filter');
+      }
+    } catch (error) {
+      console.error('Error saving filter from selected records:', error);
+      message.error('Failed to save filter');
+    }
+  };
+
+  // Save current table filters
+  const handleSaveCurrentTableFilters = async () => {
+    console.log('🔍 handleSaveCurrentTableFilters called');
+    console.log('🔍 Current advancedFilters:', advancedFilters);
+    console.log('🔍 Current timezone filters:', advancedFilters.timezone);
+    
+    try {
+      // Create a filter configuration based on current table filters
+      const filterConfig: any = {
+        sortBy: sortBy,
+        sortOrder: sortOrder === 'ascend' ? 'ASC' : 'DESC'
+      };
+
+      // Add current filters if they have values
+      if (zipcodeFilter.length > 0) {
+        filterConfig.zipcode = zipcodeFilter.join(',');
+      }
+      if (stateFilter.length > 0) {
+        filterConfig.state = stateFilter.join(',');
+      }
+      if (advancedFilters.county?.length > 0) {
+        filterConfig.county = advancedFilters.county.join(',');
+      }
+      if (advancedFilters.city?.length > 0) {
+        filterConfig.city = advancedFilters.city.join(',');
+      }
+      if (advancedFilters.timezone?.length > 0) {
+        filterConfig.timezone = advancedFilters.timezone.join(',');
+      }
+      if (advancedFilters.mhhi?.length > 0) {
+        filterConfig.mhhi = advancedFilters.mhhi.join(',');
+      }
+      if (advancedFilters.avg_hhi?.length > 0) {
+        filterConfig.avg_hhi = advancedFilters.avg_hhi.join(',');
+      }
+      if (advancedFilters.median_age?.length > 0) {
+        filterConfig.median_age = advancedFilters.median_age.join(',');
+      }
+      if (advancedFilters.households?.length > 0) {
+        filterConfig.households = advancedFilters.households.join(',');
+      }
+      if (advancedFilters.race_ethnicity_white?.length > 0) {
+        filterConfig.race_ethnicity_white = advancedFilters.race_ethnicity_white.join(',');
+      }
+      if (advancedFilters.race_ethnicity_black?.length > 0) {
+        filterConfig.race_ethnicity_black = advancedFilters.race_ethnicity_black.join(',');
+      }
+      if (advancedFilters.race_ethnicity_hispanic?.length > 0) {
+        filterConfig.race_ethnicity_hispanic = advancedFilters.race_ethnicity_hispanic.join(',');
+      }
+
+      // Add range filters
+      if (advancedFilters.mhhi_min?.trim()) filterConfig.mhhi_min = advancedFilters.mhhi_min.trim();
+      if (advancedFilters.mhhi_max?.trim()) filterConfig.mhhi_max = advancedFilters.mhhi_max.trim();
+      if (advancedFilters.avg_hhi_min?.trim()) filterConfig.avg_hhi_min = advancedFilters.avg_hhi_min.trim();
+      if (advancedFilters.avg_hhi_max?.trim()) filterConfig.avg_hhi_max = advancedFilters.avg_hhi_max.trim();
+      if (advancedFilters.pc_income_min?.trim()) filterConfig.pc_income_min = advancedFilters.pc_income_min.trim();
+      if (advancedFilters.pc_income_max?.trim()) filterConfig.pc_income_max = advancedFilters.pc_income_max.trim();
+      if (advancedFilters.pct_hh_w_income_200k_plus_min?.trim()) filterConfig.pct_hh_w_income_200k_plus_min = advancedFilters.pct_hh_w_income_200k_plus_min.trim();
+      if (advancedFilters.pct_hh_w_income_200k_plus_max?.trim()) filterConfig.pct_hh_w_income_200k_plus_max = advancedFilters.pct_hh_w_income_200k_plus_max.trim();
+      if (advancedFilters.median_age_min?.trim()) filterConfig.median_age_min = advancedFilters.median_age_min.trim();
+      if (advancedFilters.median_age_max?.trim()) filterConfig.median_age_max = advancedFilters.median_age_max.trim();
+      if (advancedFilters.pop_dens_sq_mi_min?.trim()) filterConfig.pop_dens_sq_mi_min = advancedFilters.pop_dens_sq_mi_min.trim();
+      if (advancedFilters.pop_dens_sq_mi_max?.trim()) filterConfig.pop_dens_sq_mi_max = advancedFilters.pop_dens_sq_mi_max.trim();
+      if (advancedFilters.race_ethnicity_white_min?.trim()) filterConfig.race_ethnicity_white_min = advancedFilters.race_ethnicity_white_min.trim();
+      if (advancedFilters.race_ethnicity_white_max?.trim()) filterConfig.race_ethnicity_white_max = advancedFilters.race_ethnicity_white_max.trim();
+      if (advancedFilters.race_ethnicity_black_min?.trim()) filterConfig.race_ethnicity_black_min = advancedFilters.race_ethnicity_black_min.trim();
+      if (advancedFilters.race_ethnicity_black_max?.trim()) filterConfig.race_ethnicity_black_max = advancedFilters.race_ethnicity_black_max.trim();
+      if (advancedFilters.race_ethnicity_hispanic_min?.trim()) filterConfig.race_ethnicity_hispanic_min = advancedFilters.race_ethnicity_hispanic_min.trim();
+      if (advancedFilters.race_ethnicity_hispanic_max?.trim()) filterConfig.race_ethnicity_hispanic_max = advancedFilters.race_ethnicity_hispanic_max.trim();
+      if (advancedFilters.households_min?.trim()) filterConfig.households_min = advancedFilters.households_min.trim();
+      if (advancedFilters.households_max?.trim()) filterConfig.households_max = advancedFilters.households_max.trim();
+      if (advancedFilters.family_hh_total_min?.trim()) filterConfig.family_hh_total_min = advancedFilters.family_hh_total_min.trim();
+      if (advancedFilters.family_hh_total_max?.trim()) filterConfig.family_hh_total_max = advancedFilters.family_hh_total_max.trim();
+      if (advancedFilters.edu_att_bachelors_min?.trim()) filterConfig.edu_att_bachelors_min = advancedFilters.edu_att_bachelors_min.trim();
+      if (advancedFilters.edu_att_bachelors_max?.trim()) filterConfig.edu_att_bachelors_max = advancedFilters.edu_att_bachelors_max.trim();
+      if (advancedFilters.unemployment_pct_min?.trim()) filterConfig.unemployment_pct_min = advancedFilters.unemployment_pct_min.trim();
+      if (advancedFilters.unemployment_pct_max?.trim()) filterConfig.unemployment_pct_max = advancedFilters.unemployment_pct_max.trim();
+      if (advancedFilters.housing_units_min?.trim()) filterConfig.housing_units_min = advancedFilters.housing_units_min.trim();
+      if (advancedFilters.housing_units_max?.trim()) filterConfig.housing_units_max = advancedFilters.housing_units_max.trim();
+      if (advancedFilters.owner_occupied_min?.trim()) filterConfig.owner_occupied_min = advancedFilters.owner_occupied_min.trim();
+      if (advancedFilters.owner_occupied_max?.trim()) filterConfig.owner_occupied_max = advancedFilters.owner_occupied_max.trim();
+
+      // Check if there are any active filters
+      const hasFilters = Object.keys(filterConfig).length > 2; // More than just sortBy and sortOrder
+      
+      if (!hasFilters) {
+        message.warning('No active filters to save. Please apply some filters first.');
+        return;
+      }
+
+      // Prompt user for filter name
+      const filterName = prompt('Enter a name for this filter:');
+      if (!filterName || !filterName.trim()) {
+        message.info('Filter creation cancelled');
+        return;
+      }
+
+      // Save the filter
+      const response = await apiClient.post('/filters', {
+        name: filterName.trim(),
+        filter_type: 'demographic',
+        filter_config: filterConfig
+      });
+
+      if (response.data.success) {
+        message.success(`Filter "${filterName}" saved successfully`);
+        await loadSavedFilters(); // Refresh the saved filters list
+      } else {
+        message.error(response.data.message || 'Failed to save filter');
+      }
+    } catch (error) {
+      console.error('Error saving current table filters:', error);
+      message.error('Failed to save filter');
+    }
+  };
+
+  // Apply table filters server-side
+  const applyTableFilters = (filters: any) => {
+    console.log('🔍 Applying table filters:', filters);
+    console.log('🔍 Timezone filters in incoming filters:', filters.timezone);
+    
+    // Convert Ant Design filters to our filter format
+    const newZipcodeFilter: string[] = [];
+    const newStateFilter: string[] = [];
+    const newCountyFilter: string[] = [];
+    const newCityFilter: string[] = [];
+    const newTimezoneFilter: string[] = [];
+    const newMhhiFilter: string[] = [];
+    const newAvgHhiFilter: string[] = [];
+    const newMedianAgeFilter: string[] = [];
+    const newHouseholdsFilter: string[] = [];
+    const newRaceWhiteFilter: string[] = [];
+    const newRaceBlackFilter: string[] = [];
+    const newRaceHispanicFilter: string[] = [];
+
+    if (filters.zipcode) {
+      newZipcodeFilter.push(...filters.zipcode);
+    }
+    if (filters.state) {
+      newStateFilter.push(...filters.state);
+    }
+    if (filters.county) {
+      newCountyFilter.push(...filters.county);
+    }
+    if (filters.city) {
+      newCityFilter.push(...filters.city);
+    }
+    if (filters.timezone) {
+      newTimezoneFilter.push(...filters.timezone);
+    }
+    if (filters.mhhi) {
+      newMhhiFilter.push(...filters.mhhi);
+    }
+    if (filters.avg_hhi) {
+      newAvgHhiFilter.push(...filters.avg_hhi);
+    }
+    if (filters.median_age) {
+      newMedianAgeFilter.push(...filters.median_age);
+    }
+    if (filters.households) {
+      newHouseholdsFilter.push(...filters.households);
+    }
+    if (filters.race_ethnicity_white) {
+      newRaceWhiteFilter.push(...filters.race_ethnicity_white);
+    }
+    if (filters.race_ethnicity_black) {
+      newRaceBlackFilter.push(...filters.race_ethnicity_black);
+    }
+    if (filters.race_ethnicity_hispanic) {
+      newRaceHispanicFilter.push(...filters.race_ethnicity_hispanic);
+    }
+
+    // Update state with new filters
+    setZipcodeFilter(newZipcodeFilter);
+    setStateFilter(newStateFilter);
+    
+    // Update advanced filters for all columns
+    setAdvancedFilters(prev => ({
+      ...prev,
+      county: newCountyFilter,
+      city: newCityFilter,
+      timezone: newTimezoneFilter,
+      mhhi: newMhhiFilter,
+      avg_hhi: newAvgHhiFilter,
+      median_age: newMedianAgeFilter,
+      households: newHouseholdsFilter,
+      race_ethnicity_white: newRaceWhiteFilter,
+      race_ethnicity_black: newRaceBlackFilter,
+      race_ethnicity_hispanic: newRaceHispanicFilter
+    }));
+
+    console.log('🔍 Applied filters - Zipcodes:', newZipcodeFilter, 'States:', newStateFilter, 'Counties:', newCountyFilter, 'Cities:', newCityFilter, 'Timezones:', newTimezoneFilter);
+    console.log('🔍 Applied numeric filters - MHHI:', newMhhiFilter, 'Avg HHI:', newAvgHhiFilter, 'Age:', newMedianAgeFilter, 'Households:', newHouseholdsFilter);
+  };
+
+  // Export function
+  const exportToCSV = (data: DemographicRecord[], filename: string) => {
+    const headers = [
+      'Zipcode', 'State', 'County', 'City', 'Timezone', 'Median HHI', 'Avg HHI', 'Per Capita Income',
+      'Age', 'Households', 'White %', 'Black %', 'Hispanic %'
+    ];
+    
+    const csvContent = [
+      headers.join(','),
+      ...data.map(record => [
+        record.zipcode,
+        record.state,
+        record.county,
+        record.city,
+        record.timezone_display_name || record.timezone_name,
+        record.mhhi,
+        record.avg_hhi,
+        record.pc_income,
+        record.median_age,
+        record.households,
+        record.race_ethnicity_white,
+        record.race_ethnicity_black,
+        record.race_ethnicity_hispanic
+      ].map(field => `"${field}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   if (!isAuthenticated) {
@@ -566,8 +1176,8 @@ const ViewRecordsDashboard: React.FC = () => {
 
   return (
     <Layout style={{ background: 'transparent', height: '100%' }}>
-      {/* Compact Filters Section - Left Side */}
-      {sidebarVisible && (
+      {/* Compact Filters Section - Left Side - COMMENTED OUT FOR EXCEL-LIKE EXPERIENCE */}
+      {false && sidebarVisible && (
         <Layout.Sider 
           width={350} 
           style={{ 
@@ -1510,181 +2120,431 @@ const ViewRecordsDashboard: React.FC = () => {
 
       {/* Main Content - Right Side */}
       <Layout.Content style={{ 
-        paddingLeft: sidebarVisible ? '16px' : '0px',
-        transition: 'all 0.3s ease',
-        width: sidebarVisible ? 'auto' : '100%',
-        maxWidth: sidebarVisible ? 'none' : '100vw'
+        padding: '16px',
+        background: 'transparent',
+        width: '100%',
+        maxWidth: '100%'
       }}>
         {/* Header Stats */}
         <Card size="small" className={`${isDarkMode ? 'dark' : 'light'} mb-4`}>
           <Row justify="space-between" align="middle">
             <Col>
+              <Space>
               <Title level={4} style={{ margin: 0 }}>
-                Demographic Records
+                  📊 Demographic Records
               </Title>
-              <Text type="secondary">
-                Showing {records.length} of {total} records
-              </Text>
+                <Badge count={records.length} showZero style={{ backgroundColor: '#52c41a' }}>
+                  <Tag color="green">
+                    {records.length} Records
+                  </Tag>
+                </Badge>
+              </Space>
             </Col>
             <Col>
               <Space>
-                <Button
-                  size="small"
-                  icon={<FilterOutlined />}
-                  onClick={() => setSidebarVisible(!sidebarVisible)}
-                  type={sidebarVisible ? 'primary' : 'default'}
-                >
-                  {sidebarVisible ? 'Hide Filters' : 'Show Filters'}
-                </Button>
                 <Badge count={filteredZipcodes.length} showZero>
-                  <Button size="small" icon={<EyeOutlined />}>
-                    Filtered Zipcodes
-                  </Button>
+                  <Tag color="blue">
+                    {filteredZipcodes.length} Zipcodes
+                  </Tag>
                 </Badge>
                 <Button size="small" icon={<DownloadOutlined />}>
-                  Export
+                  Export All
+                </Button>
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={fetchRecords}
+                  loading={loading}
+                  size="small"
+                >
+                  Refresh
                 </Button>
               </Space>
             </Col>
           </Row>
         </Card>
 
-        {/* Records Table */}
-        <Card size="small" className={`${isDarkMode ? 'dark' : 'light'}`}>
-          {loading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto"></div>
-              <p className="mt-2 text-sm text-gray-500">Loading records...</p>
-            </div>
-          ) : records.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <p>No records found</p>
-              <p className="text-sm">Try adjusting your search criteria</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className={`w-full text-sm ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>
-                <thead>
-                  <tr className={`${isDarkMode ? 'bg-gray-700' : 'bg-gray-100'}`}>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600" 
-                        onClick={() => handleSort('zipcode')}>
-                      📮 Zipcode {sortBy === 'zipcode' && (sortOrder === 'ascend' ? '⬆️' : '⬇️')}
-                    </th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('state')}>
-                      🌍 State {sortBy === 'state' && (sortOrder === 'ascend' ? '⬆️' : '⬇️')}
-                    </th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('county')}>
-                      🏛️ County {sortBy === 'county' && (sortOrder === 'ascend' ? '⬆️' : '⬇️')}
-                    </th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('city')}>
-                      🏙️ City {sortBy === 'city' && (sortOrder === 'ascend' ? '⬆️' : '⬇️')}
-                    </th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('mhhi')}>
-                      💰 Median HHI {sortBy === 'mhhi' && (sortOrder === 'ascend' ? '⬆️' : '⬇️')}
-                    </th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('avg_hhi')}>
-                      💵 Avg HHI {sortBy === 'avg_hhi' && (sortOrder === 'ascend' ? '⬆️' : '⬇️')}
-                    </th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('pc_income')}>
-                      👤 Per Capita {sortBy === 'pc_income' && (sortOrder === 'ascend' ? '⬆️' : '⬇️')}
-                    </th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('median_age')}>
-                      👥 Age {sortBy === 'median_age' && (sortOrder === 'ascend' ? '⬆️' : '⬇️')}
-                    </th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('households')}>
-                      🏠 HH {sortBy === 'households' && (sortOrder === 'ascend' ? '⬆️' : '⬇️')}
-                    </th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('race_ethnicity_white')}>
-                      ⚪ White {sortBy === 'race_ethnicity_white' && (sortOrder === 'ascend' ? '⬆️' : '⬇️')}
-                    </th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('race_ethnicity_black')}>
-                      ⚫ Black {sortBy === 'race_ethnicity_black' && (sortOrder === 'ascend' ? '⬆️' : '⬇️')}
-                    </th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('race_ethnicity_hispanic')}>
-                      🌮 Hispanic {sortBy === 'race_ethnicity_hispanic' && (sortOrder === 'ascend' ? '⬆️' : '⬇️')}
-                    </th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('unemployment_pct')}>
-                      📉 Unemp % {sortBy === 'unemployment_pct' && (sortOrder === 'ascend' ? '⬆️' : '⬇️')}
-                    </th>
-                    <th className="px-3 py-2 text-left cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-600"
-                        onClick={() => handleSort('housing_units')}>
-                      🏘️ Units {sortBy === 'housing_units' && (sortOrder === 'ascend' ? '⬆️' : '⬇️')}
-                    </th>
-                    <th className="px-3 py-2 text-left">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {records.map((record) => (
-                    <tr key={record.id} className={`border-b ${isDarkMode ? 'border-gray-700 hover:bg-gray-700' : 'border-gray-200 hover:bg-gray-50'}`}>
-                      <td className="px-3 py-2 font-medium">{record.zipcode}</td>
-                      <td className="px-3 py-2">{record.state}</td>
-                      <td className="px-3 py-2">{record.county}</td>
-                      <td className="px-3 py-2">{record.city}</td>
-                      <td className="px-3 py-2">{formatCurrency(record.mhhi)}</td>
-                      <td className="px-3 py-2">{formatCurrency(record.avg_hhi)}</td>
-                      <td className="px-3 py-2">{formatCurrency(record.pc_income)}</td>
-                      <td className="px-3 py-2">{record.median_age || '-'}</td>
-                      <td className="px-3 py-2">{formatNumber(record.households)}</td>
-                      <td className="px-3 py-2">{formatNumber(record.race_ethnicity_white)}</td>
-                      <td className="px-3 py-2">{formatNumber(record.race_ethnicity_black)}</td>
-                      <td className="px-3 py-2">{formatNumber(record.race_ethnicity_hispanic)}</td>
-                      <td className="px-3 py-2">{record.unemployment_pct ? `${record.unemployment_pct}%` : '-'}</td>
-                      <td className="px-3 py-2">{formatNumber(record.housing_units)}</td>
-                      <td className="px-3 py-2">
-                        <Button size="small" icon={<EyeOutlined />} type="text">
-                          View
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-
-        {/* Pagination */}
-        {total > pageSize && (
-          <Card size="small" className={`${isDarkMode ? 'dark' : 'light'} mt-4`}>
-            <Row justify="space-between" align="middle">
-              <Col>
-                <Text>
-                  Page {currentPage} of {Math.ceil(total / pageSize)}
-                </Text>
-              </Col>
-              <Col>
+        {/* New Excel-like Table Header with Bulk Actions */}
+        <Card 
+          title={
+            <Space>
+              <span>Demographic Records</span>
+              {selectedRowKeys.length > 0 && (
+                <Badge count={selectedRowKeys.length} style={{ backgroundColor: '#52c41a' }}>
+                  <Tag color="green">Selected</Tag>
+                </Badge>
+              )}
+            </Space>
+          }
+          size="small"
+          className={`${isDarkMode ? 'dark' : 'light'}`}
+          extra={
                 <Space>
+              {selectedRowKeys.length > 0 && (
+                <>
                   <Button
+                    type="primary"
+                    icon={<PhoneOutlined />}
+                    onClick={() => handleBulkAction('generatePhoneNumbers')}
                     size="small"
-                    disabled={currentPage === 1}
-                    onClick={() => setCurrentPage(currentPage - 1)}
                   >
-                    Previous
+                    Generate Phone Numbers ({selectedRowKeys.length})
                   </Button>
                   <Button
+                    icon={<DownloadOutlined />}
+                    onClick={() => handleBulkAction('export')}
                     size="small"
-                    disabled={currentPage >= Math.ceil(total / pageSize)}
-                    onClick={() => setCurrentPage(currentPage + 1)}
                   >
-                    Next
+                    Export Selected ({selectedRowKeys.length})
+                  </Button>
+                  <Button
+                    icon={<FilterOutlined />}
+                    onClick={() => handleBulkAction('createFilter')}
+                    size="small"
+                  >
+                    Save Filter from Selected
+                  </Button>
+                  <Button
+                    icon={<SaveOutlined />}
+                    onClick={handleSaveCurrentTableFilters}
+                    size="small"
+                  >
+                    Save Current Filters
+                  </Button>
+                  <Button
+                    icon={<EyeOutlined />}
+                    onClick={() => {
+                      console.log('🔍 Current advancedFilters:', advancedFilters);
+                      console.log('🔍 Current timezone filters:', advancedFilters.timezone);
+                      console.log('🔍 Current zipcodeFilter:', zipcodeFilter);
+                      console.log('🔍 Current stateFilter:', stateFilter);
+                      message.info(`Current timezone filters: ${advancedFilters.timezone?.join(', ') || 'None'}`);
+                    }}
+                    size="small"
+                  >
+                    Debug Filters
+                  </Button>
+                </>
+              )}
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={fetchRecords}
+                loading={loading}
+                size="small"
+              >
+                Refresh
                   </Button>
                 </Space>
-              </Col>
-            </Row>
+          }
+        >
+          <div style={{ marginBottom: 16 }}>
+            <Text type="secondary">
+              🔍 Use column filters to search and filter data • ✅ Select rows for bulk actions • 📊 Showing {records.length} of {total} records
+            </Text>
+          </div>
+          
+
+
+          <Table
+            dataSource={records}
+            loading={loading}
+            pagination={{
+              current: currentPage,
+              pageSize: pageSize,
+              total: total,
+              showSizeChanger: true,
+              showQuickJumper: true,
+              showTotal: (total, range) => `${range[0]}-${range[1]} of ${total} records`,
+              onChange: (page, size) => {
+                setCurrentPage(page);
+                setCurrentPageSize(size || 20);
+              },
+              onShowSizeChange: (current, size) => {
+                setCurrentPageSize(size);
+                setCurrentPage(1);
+              },
+            }}
+            onChange={(pagination, filters, sorter) => {
+              console.log('Table change detected:', { pagination, filters, sorter });
+              
+              // Reset to page 1 when filters change
+              if (filters && Object.keys(filters).length > 0) {
+                setCurrentPage(1);
+              }
+              
+              // Apply filters server-side
+              applyTableFilters(filters);
+            }}
+            rowKey="id"
+            scroll={{ x: 1500, y: 600 }}
+            size="small"
+            rowSelection={{
+              type: 'checkbox',
+              selectedRowKeys,
+              onChange: (selectedKeys: React.Key[]) => {
+                setSelectedRowKeys(selectedKeys);
+                console.log('Selected rows changed:', selectedKeys);
+              },
+              getCheckboxProps: (record: DemographicRecord) => ({
+                disabled: false,
+                name: record.zipcode,
+              }),
+            }}
+            columns={[
+              {
+                title: 'Zipcode',
+                dataIndex: 'zipcode',
+                key: 'zipcode',
+                width: 120,
+                fixed: 'left',
+                sorter: (a: DemographicRecord, b: DemographicRecord) => a.zipcode.localeCompare(b.zipcode),
+                render: (text: string) => (
+                  <Tag color="blue" style={{ fontWeight: 'bold' }}>
+                    {text}
+                  </Tag>
+                ),
+                filters: allZipcodes.map(zipcode => ({
+                  text: zipcode,
+                  value: zipcode,
+                })),
+                filteredValue: zipcodeFilter,
+                filterSearch: true,
+              },
+              {
+                title: 'State',
+                dataIndex: 'state',
+                key: 'state',
+                width: 100,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => a.state.localeCompare(b.state),
+                filters: allStates.map(state => ({
+                  text: state,
+                  value: state,
+                })),
+                filteredValue: stateFilter,
+                filterSearch: true,
+              },
+              {
+                title: 'County',
+                dataIndex: 'county',
+                key: 'county',
+                width: 150,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => a.county.localeCompare(b.county),
+                filters: allCounties.filter(Boolean).map(county => ({
+                  text: county,
+                  value: county,
+                })),
+                filteredValue: advancedFilters.county,
+                filterSearch: true,
+              },
+              {
+                title: 'City',
+                dataIndex: 'city',
+                key: 'city',
+                width: 150,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => a.city.localeCompare(b.city),
+                filters: allCities.filter(Boolean).map(city => ({
+                  text: city,
+                  value: city,
+                })),
+                filteredValue: advancedFilters.city,
+                filterSearch: true,
+              },
+              {
+                title: 'Timezone',
+                dataIndex: 'timezone_name',
+                key: 'timezone',
+                width: 180,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => 
+                  (a.timezone_display_name || '').localeCompare(b.timezone_display_name || ''),
+                render: (timezoneName: string, record: DemographicRecord) => {
+                  if (!timezoneName || !record.timezone_display_name) return '-';
+                  
+                  // Determine current abbreviation based on DST status
+                  const isDST = record.observes_dst && isDaylightSavingTime(new Date());
+                  const abbreviation = isDST && record.abbreviation_daylight ? 
+                    record.abbreviation_daylight : record.abbreviation_standard;
+                  
+                  const displayText = `${record.timezone_display_name} (${abbreviation})`;
+                  
+                  // Color mapping for different timezone types
+                  const colorMap: { [key: string]: string } = {
+                    'Eastern': 'blue',
+                    'Central': 'green', 
+                    'Mountain': 'orange',
+                    'Pacific': 'purple',
+                    'Alaska': 'cyan',
+                    'Hawaii': 'magenta',
+                    'Atlantic': 'red',
+                    'Chamorro': 'gold',
+                    'Samoa': 'lime'
+                  };
+                  
+                  // Find color based on display name
+                  const color = Object.keys(colorMap).find(key => 
+                    record.timezone_display_name.includes(key)
+                  );
+                  
+                  return (
+                    <Tag color={color ? colorMap[color] : 'default'} style={{ fontSize: '11px' }}>
+                      {displayText}
+                    </Tag>
+                  );
+                },
+                filters: allTimezoneOptions.map(option => ({
+                  text: option.label,
+                  value: option.value,
+                })),
+                filteredValue: advancedFilters.timezone,
+                filterSearch: true,
+              },
+              {
+                title: 'Median HHI',
+                dataIndex: 'mhhi',
+                key: 'mhhi',
+                width: 120,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => {
+                  const aVal = typeof a.mhhi === 'number' ? a.mhhi : parseFloat(a.mhhi || '0');
+                  const bVal = typeof b.mhhi === 'number' ? b.mhhi : parseFloat(b.mhhi || '0');
+                  return aVal - bVal;
+                },
+                filters: allMhhiValues.map(value => ({
+                  text: formatCurrency(value),
+                  value: value.toString(),
+                })),
+                filteredValue: advancedFilters.mhhi,
+                filterSearch: true,
+                render: (value: number | string) => formatCurrency(value),
+              },
+              {
+                title: 'Avg HHI',
+                dataIndex: 'avg_hhi',
+                key: 'avg_hhi',
+                width: 120,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => {
+                  const aVal = typeof a.avg_hhi === 'number' ? a.avg_hhi : parseFloat(a.avg_hhi || '0');
+                  const bVal = typeof b.avg_hhi === 'number' ? b.avg_hhi : parseFloat(b.avg_hhi || '0');
+                  return aVal - bVal;
+                },
+                filters: allAvgHhiValues.map(value => ({
+                  text: formatCurrency(value),
+                  value: value.toString(),
+                })),
+                filteredValue: advancedFilters.avg_hhi,
+                filterSearch: true,
+                render: (value: number | string) => formatCurrency(value),
+              },
+              {
+                title: 'Median Age',
+                dataIndex: 'median_age',
+                key: 'median_age',
+                width: 100,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => {
+                  const aVal = typeof a.median_age === 'number' ? a.median_age : parseFloat(a.median_age || '0');
+                  const bVal = typeof b.median_age === 'number' ? b.median_age : parseFloat(b.median_age || '0');
+                  return aVal - bVal;
+                },
+                filters: allMedianAgeValues.map(value => ({
+                  text: value.toString(),
+                  value: value.toString(),
+                })),
+                filteredValue: advancedFilters.median_age,
+                filterSearch: true,
+              },
+              {
+                title: 'Households',
+                dataIndex: 'households',
+                key: 'households',
+                width: 120,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => {
+                  const aVal = typeof a.households === 'number' ? a.households : parseFloat(a.households || '0');
+                  const bVal = typeof b.households === 'number' ? b.households : parseFloat(b.households || '0');
+                  return aVal - bVal;
+                },
+                filters: allHouseholdsValues.map(value => ({
+                  text: formatNumber(value),
+                  value: value.toString(),
+                })),
+                filteredValue: advancedFilters.households,
+                filterSearch: true,
+                render: (value: number | string) => formatNumber(value),
+              },
+              {
+                title: 'White %',
+                dataIndex: 'race_ethnicity_white',
+                key: 'race_ethnicity_white',
+                width: 100,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => {
+                  const aVal = typeof a.race_ethnicity_white === 'number' ? a.race_ethnicity_white : parseFloat(a.race_ethnicity_white || '0');
+                  const bVal = typeof b.race_ethnicity_white === 'number' ? b.race_ethnicity_white : parseFloat(b.race_ethnicity_white || '0');
+                  return aVal - bVal;
+                },
+                filters: allRaceWhiteValues.map(value => ({
+                  text: formatNumber(value),
+                  value: value.toString(),
+                })),
+                filteredValue: advancedFilters.race_ethnicity_white,
+                filterSearch: true,
+                render: (value: number | string) => formatNumber(value),
+              },
+              {
+                title: 'Black %',
+                dataIndex: 'race_ethnicity_black',
+                key: 'race_ethnicity_black',
+                width: 100,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => {
+                  const aVal = typeof a.race_ethnicity_black === 'number' ? a.race_ethnicity_black : parseFloat(a.race_ethnicity_black || '0');
+                  const bVal = typeof b.race_ethnicity_black === 'number' ? b.race_ethnicity_black : parseFloat(b.race_ethnicity_black || '0');
+                  return aVal - bVal;
+                },
+                filters: allRaceBlackValues.map(value => ({
+                  text: formatNumber(value),
+                  value: value.toString(),
+                })),
+                filteredValue: advancedFilters.race_ethnicity_black,
+                filterSearch: true,
+                render: (value: number | string) => formatNumber(value),
+              },
+              {
+                title: 'Hispanic %',
+                dataIndex: 'race_ethnicity_hispanic',
+                key: 'race_ethnicity_hispanic',
+                width: 120,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => {
+                  const aVal = typeof a.race_ethnicity_hispanic === 'number' ? a.race_ethnicity_hispanic : parseFloat(a.race_ethnicity_hispanic || '0');
+                  const bVal = typeof b.race_ethnicity_hispanic === 'number' ? b.race_ethnicity_hispanic : parseFloat(b.race_ethnicity_hispanic || '0');
+                  return aVal - bVal;
+                },
+                filters: allRaceHispanicValues.map(value => ({
+                  text: formatNumber(value),
+                  value: value.toString(),
+                })),
+                filteredValue: advancedFilters.race_ethnicity_hispanic,
+                filterSearch: true,
+                render: (value: number | string) => formatNumber(value),
+              },
+              {
+                title: 'Actions',
+                key: 'actions',
+                width: 100,
+                fixed: 'right',
+                render: (_, record: DemographicRecord) => (
+                  <Button
+                    size="small"
+                    icon={<EyeOutlined />}
+                    type="text"
+                    onClick={() => {
+                      console.log('View record:', record);
+                      message.info(`Viewing record for ${record.zipcode}`);
+                    }}
+                  >
+                    View
+                  </Button>
+                ),
+              },
+            ]}
+          />
           </Card>
-        )}
+
+
       </Layout.Content>
       
       {/* Floating Action Button when sidebar is hidden */}

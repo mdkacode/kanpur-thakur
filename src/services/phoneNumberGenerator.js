@@ -78,8 +78,9 @@ class PhoneNumberGenerator {
       return { valid: false, error: 'NXX must be exactly 3 digits' };
     }
 
-    if (thousands && thousands !== '-' && (thousands.length !== 3 || !/^\d{3}$/.test(thousands))) {
-      return { valid: false, error: 'THOUSANDS must be exactly 3 digits or "-"' };
+    // THOUSANDS should be a single digit (0-9) or "-" for default
+    if (thousands && thousands !== '-' && (thousands.length !== 1 || !/^\d$/.test(thousands))) {
+      return { valid: false, error: 'THOUSANDS must be exactly 1 digit (0-9) or "-"' };
     }
 
     return { valid: true };
@@ -99,15 +100,25 @@ class PhoneNumberGenerator {
     // Get timezone for the state
     const timezone = this.getTimezoneForState(state);
 
-    // Generate numbers from 000 to 999
+    // Handle THOUSANDS field - if it's "-" or empty, set to "0" (single digit)
+    let thousandsBase = thousands;
+    if (!thousands || thousands === '-' || thousands.trim() === '') {
+      thousandsBase = '0';
+    }
+    // Ensure thousands is exactly 1 digit
+    thousandsBase = thousandsBase.toString().slice(-1); // Take only the last digit
+
+    // Generate numbers from 000 to 999 for the complete series
+    // Format: NPA + NXX + THOUSANDS + 000-999 (total 10 digits)
     for (let i = 0; i <= 999; i++) {
-      const thousandsStr = i.toString().padStart(3, '0');
-      const fullPhoneNumber = `${npa}${nxx}${thousandsStr}`;
+      const lastThreeDigits = i.toString().padStart(3, '0');
+      const fullPhoneNumber = `${npa}${nxx}${thousandsBase}${lastThreeDigits}`;
       
       phoneNumbers.push({
         npa,
         nxx,
-        thousands: thousandsStr,
+        thousands: thousandsBase,
+        last_three: lastThreeDigits,
         full_phone_number: fullPhoneNumber,
         state,
         timezone,
@@ -126,6 +137,32 @@ class PhoneNumberGenerator {
   async generatePhoneNumbersFromTelecareOutput(runId, zip, filterId = null) {
     try {
       console.log(`🔢 Starting phone number generation for run ${runId}, zip ${zip}`);
+
+      // Check for existing phone numbers for this zipcode
+      if (filterId) {
+        const existing = await PhoneNumber.checkExistingPhoneNumbersForZipAndFilter(zip, filterId);
+        if (existing.exists) {
+          console.log(`⚠️ Phone numbers already exist for zip ${zip} and filter ${filterId}. Count: ${existing.count}, Latest: ${existing.latest_generated}`);
+          return {
+            success: false,
+            message: `Phone numbers already exist for zipcode ${zip} with this filter. Generated: ${existing.count} numbers on ${existing.latest_generated}`,
+            existing_count: existing.count,
+            latest_generated: existing.latest_generated
+          };
+        }
+      } else {
+        const existing = await PhoneNumber.checkExistingPhoneNumbersForZip(zip);
+        if (existing.exists) {
+          console.log(`⚠️ Phone numbers already exist for zip ${zip}. Count: ${existing.count}, Jobs: ${existing.job_count}, Latest: ${existing.latest_generated}`);
+          return {
+            success: false,
+            message: `Phone numbers already exist for zipcode ${zip}. Generated: ${existing.count} numbers across ${existing.job_count} jobs. Latest: ${existing.latest_generated}`,
+            existing_count: existing.count,
+            job_count: existing.job_count,
+            latest_generated: existing.latest_generated
+          };
+        }
+      }
 
       // Create a new job
       const job = await PhoneNumber.createJob(runId, zip, filterId);
@@ -265,12 +302,268 @@ class PhoneNumberGenerator {
     }
   }
 
+  // Generate phone numbers for all zipcodes in a filter (NEW METHOD)
+  async generatePhoneNumbersForFilterBatch(filterId, zipcodes) {
+    try {
+      console.log(`🔢 Starting batch phone number generation for filter ${filterId} with ${zipcodes.length} zipcodes`);
+
+      const results = {
+        success: true,
+        filter_id: filterId,
+        total_zipcodes: zipcodes.length,
+        successful_zipcodes: [],
+        failed_zipcodes: [],
+        skipped_zipcodes: [],
+        total_generated: 0,
+        jobs: []
+      };
+
+      for (const zip of zipcodes) {
+        try {
+          console.log(`📍 Processing zipcode: ${zip}`);
+
+          // Check if phone numbers already exist for this zip and filter
+          const existing = await PhoneNumber.checkExistingPhoneNumbersForZipAndFilter(zip, filterId);
+          if (existing.exists) {
+            console.log(`⚠️ Phone numbers already exist for zip ${zip} and filter ${filterId}. Skipping.`);
+            results.skipped_zipcodes.push({
+              zip,
+              reason: 'Already exists',
+              count: existing.count,
+              latest_generated: existing.latest_generated
+            });
+            continue;
+          }
+
+          // Generate phone numbers directly from NPA NXX records (no telecare required)
+          const result = await this.generatePhoneNumbersFromNpaNxxRecords(zip, filterId);
+          
+          if (result.success) {
+            results.successful_zipcodes.push({
+              zip,
+              job_id: result.job_id,
+              generated: result.total_generated,
+              run_id: null // No run_id needed for direct generation
+            });
+            results.total_generated += result.total_generated;
+            results.jobs.push(result.job_id);
+            console.log(`✅ Successfully generated ${result.total_generated} phone numbers for zip ${zip}`);
+          } else {
+            results.failed_zipcodes.push({
+              zip,
+              error: result.message || 'Generation failed'
+            });
+          }
+
+        } catch (error) {
+          console.error(`❌ Error generating phone numbers for zip ${zip}:`, error);
+          results.failed_zipcodes.push({
+            zip,
+            error: error.message
+          });
+        }
+
+        // Add a small delay to prevent overwhelming the database
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      console.log(`🎉 Batch generation completed for filter ${filterId}:`);
+      console.log(`   ✅ Successful: ${results.successful_zipcodes.length} zipcodes`);
+      console.log(`   ⚠️ Skipped: ${results.skipped_zipcodes.length} zipcodes`);
+      console.log(`   ❌ Failed: ${results.failed_zipcodes.length} zipcodes`);
+      console.log(`   📱 Total generated: ${results.total_generated} phone numbers`);
+
+      return results;
+
+    } catch (error) {
+      console.error(`❌ Error in batch phone number generation for filter:`, error);
+      throw error;
+    }
+  }
+
+  // Generate phone numbers directly from NPA NXX records (NEW METHOD - NO TELECARE REQUIRED)
+  async generatePhoneNumbersFromNpaNxxRecords(zip, filterId = null) {
+    let job = null;
+    
+    try {
+      console.log(`🔢 Starting phone number generation from NPA NXX records for zip ${zip}`);
+
+      // Check for existing phone numbers for this zipcode
+      if (filterId) {
+        const existing = await PhoneNumber.checkExistingPhoneNumbersForZipAndFilter(zip, filterId);
+        if (existing.exists) {
+          console.log(`⚠️ Phone numbers already exist for zip ${zip} and filter ${filterId}. Count: ${existing.count}, Latest: ${existing.latest_generated}`);
+          return {
+            success: false,
+            message: `Phone numbers already exist for zipcode ${zip} with this filter. Generated: ${existing.count} numbers on ${existing.latest_generated}`,
+            existing_count: existing.count,
+            latest_generated: existing.latest_generated
+          };
+        }
+      } else {
+        const existing = await PhoneNumber.checkExistingPhoneNumbersForZip(zip);
+        if (existing.exists) {
+          console.log(`⚠️ Phone numbers already exist for zip ${zip}. Count: ${existing.count}, Jobs: ${existing.job_count}, Latest: ${existing.latest_generated}`);
+          return {
+            success: false,
+            message: `Phone numbers already exist for zipcode ${zip}. Generated: ${existing.count} numbers across ${existing.job_count} jobs. Latest: ${existing.latest_generated}`,
+            existing_count: existing.count,
+            job_count: existing.job_count,
+            latest_generated: existing.latest_generated
+          };
+        }
+      }
+
+      // Create a new job
+      job = await PhoneNumber.createJob('npa-nxx-records', zip, filterId);
+      console.log(`✅ Created phone number job: ${job.job_id}`);
+
+      // Update job status to processing
+      await PhoneNumber.updateJobStatus(job.job_id, 'processing');
+
+      // Get NPA NXX records for this zipcode
+      const Record = require('../models/Record');
+      const npaNxxRecords = await Record.findByZip(zip);
+      
+      if (!npaNxxRecords || npaNxxRecords.length === 0) {
+        throw new Error(`No NPA NXX records found for zipcode ${zip}`);
+      }
+
+      console.log(`📊 Found ${npaNxxRecords.length} NPA NXX records for zip ${zip}`);
+
+      // Update job with total count
+      await PhoneNumber.updateJobStatus(job.job_id, 'processing', {
+        totalNumbers: npaNxxRecords.length * 10000 // Each NPA-NXX generates 10,000 numbers (10 thousands digits × 1000 each)
+      });
+
+      let totalGenerated = 0;
+      let totalFailed = 0;
+      const allPhoneNumbers = [];
+
+      // Process each NPA NXX record
+      for (const record of npaNxxRecords) {
+        try {
+          // Extract required fields
+          const npa = record.npa;
+          const nxx = record.nxx;
+          const state = record.state_code;
+          const city = record.city;
+          const ratecenter = record.rc;
+
+          // Validate required fields
+          if (!npa || !nxx || !state) {
+            console.warn(`⚠️ Skipping record with missing required fields:`, record);
+            totalFailed += 10000; // Each NPA-NXX generates 10,000 numbers (10 thousands digits × 1000 each)
+            continue;
+          }
+
+          // Generate phone numbers for each THOUSANDS digit (0-9)
+          for (let thousandsDigit = 0; thousandsDigit <= 9; thousandsDigit++) {
+            const phoneNumbers = this.generatePhoneNumbersForNpaNxx(
+              npa, nxx, thousandsDigit.toString(), state, zip, 'STANDARD', 'Direct Generation', ratecenter, filterId
+            );
+
+            if (phoneNumbers.length > 0) {
+              allPhoneNumbers.push(...phoneNumbers);
+              totalGenerated += phoneNumbers.length;
+              
+              // Update progress every 1000 numbers
+              if (totalGenerated % 1000 === 0) {
+                await PhoneNumber.updateJobStatus(job.job_id, 'processing', {
+                  generatedNumbers: totalGenerated,
+                  failedNumbers: totalFailed
+                });
+                console.log(`📈 Progress: ${totalGenerated} numbers generated, ${totalFailed} failed`);
+              }
+            }
+          }
+
+        } catch (error) {
+          console.error(`❌ Error processing NPA NXX record:`, error);
+          totalFailed += 10000; // Each NPA-NXX should generate 10,000 numbers
+        }
+      }
+
+      // Insert all phone numbers into database
+      if (allPhoneNumbers.length > 0) {
+        console.log(`💾 Inserting ${allPhoneNumbers.length} phone numbers into database...`);
+        
+        // Add job_id to each phone number (no run_id for direct generation)
+        const phoneNumbersWithJob = allPhoneNumbers.map(phoneNumber => ({
+          ...phoneNumber,
+          job_id: job.job_id
+          // run_id is null for direct generation
+        }));
+
+        const insertedResults = await PhoneNumber.bulkInsertPhoneNumbers(phoneNumbersWithJob);
+        console.log(`✅ Successfully inserted ${insertedResults.length} phone numbers`);
+      }
+
+      // Update job status to completed
+      await PhoneNumber.updateJobStatus(job.job_id, 'completed', {
+        generatedNumbers: totalGenerated,
+        failedNumbers: totalFailed,
+        finishedAt: new Date()
+      });
+
+      console.log(`🎉 Phone number generation completed successfully!`);
+      console.log(`📊 Summary: ${totalGenerated} generated, ${totalFailed} failed`);
+
+      return {
+        success: true,
+        job_id: job.job_id,
+        total_generated: totalGenerated,
+        total_failed: totalFailed,
+        total_processed: npaNxxRecords.length
+      };
+
+    } catch (error) {
+      console.error(`❌ Error in phone number generation from NPA NXX records:`, error);
+      
+      // Update job status to failed
+      if (job && job.job_id) {
+        await PhoneNumber.updateJobStatus(job.job_id, 'failed', {
+          errorMessage: error.message,
+          finishedAt: new Date()
+        });
+      }
+
+      throw error;
+    }
+  }
+
   // Generate phone numbers directly from CSV data
   async generatePhoneNumbersFromCSV(csvData, zip, filterId = null) {
     let job = null;
     
     try {
       console.log(`🔢 Starting phone number generation from CSV for zip ${zip}`);
+
+      // Check for existing phone numbers for this zipcode
+      if (filterId) {
+        const existing = await PhoneNumber.checkExistingPhoneNumbersForZipAndFilter(zip, filterId);
+        if (existing.exists) {
+          console.log(`⚠️ Phone numbers already exist for zip ${zip} and filter ${filterId}. Count: ${existing.count}, Latest: ${existing.latest_generated}`);
+          return {
+            success: false,
+            message: `Phone numbers already exist for zipcode ${zip} with this filter. Generated: ${existing.count} numbers on ${existing.latest_generated}`,
+            existing_count: existing.count,
+            latest_generated: existing.latest_generated
+          };
+        }
+      } else {
+        const existing = await PhoneNumber.checkExistingPhoneNumbersForZip(zip);
+        if (existing.exists) {
+          console.log(`⚠️ Phone numbers already exist for zip ${zip}. Count: ${existing.count}, Jobs: ${existing.job_count}, Latest: ${existing.latest_generated}`);
+          return {
+            success: false,
+            message: `Phone numbers already exist for zipcode ${zip}. Generated: ${existing.count} numbers across ${existing.job_count} jobs. Latest: ${existing.latest_generated}`,
+            existing_count: existing.count,
+            job_count: existing.job_count,
+            latest_generated: existing.latest_generated
+          };
+        }
+      }
 
       // Create a new job
       job = await PhoneNumber.createJob('csv-generated', zip, filterId);
@@ -487,8 +780,8 @@ class PhoneNumberGenerator {
 
     // Define CSV headers
     const headers = [
-      'NPA', 'NXX', 'THOUSANDS', 'FULL_PHONE_NUMBER', 'STATE', 'TIMEZONE',
-      'COMPANY_TYPE', 'COMPANY', 'RATECENTER', 'ZIPCODE'
+      'NPA', 'NXX', 'THOUSANDS', 'LAST_THREE', 'FULL_PHONE_NUMBER', 'STATE', 'TIMEZONE',
+      'COMPANY_TYPE', 'COMPANY', 'RATECENTER', 'ZIPCODE', 'FILTER_ID'
     ];
 
     // Create CSV content
@@ -499,13 +792,15 @@ class PhoneNumberGenerator {
         phoneNumber.npa,
         phoneNumber.nxx,
         phoneNumber.thousands,
+        phoneNumber.last_three || '',
         phoneNumber.full_phone_number,
         phoneNumber.state,
         phoneNumber.timezone,
         phoneNumber.company_type || '',
         phoneNumber.company || '',
         phoneNumber.ratecenter || '',
-        phoneNumber.zip
+        phoneNumber.zip,
+        phoneNumber.filter_id || ''
       ].map(field => `"${field}"`).join(',');
       
       csvRows.push(row);

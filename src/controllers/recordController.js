@@ -15,6 +15,7 @@ class RecordController {
         state_code,
         city,
         rc,
+        timezone_id,
         date_from,
         date_to
       } = req.query;
@@ -23,10 +24,23 @@ class RecordController {
       const filters = {};
       if (npa) filters.npa = npa;
       if (nxx) filters.nxx = nxx;
-      if (zip) filters.zip = zip;
-      if (state_code) filters.state_code = state_code;
-      if (city) filters.city = city;
+      if (zip) {
+        // Handle comma-separated values for array-based filtering
+        filters.zip = zip.includes(',') ? zip.split(',').map(s => s.trim()) : zip;
+      }
+      if (state_code) {
+        // Handle comma-separated values for array-based filtering
+        filters.state_code = state_code.includes(',') ? state_code.split(',').map(s => s.trim()) : state_code;
+      }
+      if (city) {
+        // Handle comma-separated values for array-based filtering
+        filters.city = city.includes(',') ? city.split(',').map(s => s.trim()) : city;
+      }
       if (rc) filters.rc = rc;
+      if (timezone_id) {
+        // Handle comma-separated values for array-based filtering
+        filters.timezone_id = timezone_id.includes(',') ? timezone_id.split(',').map(s => s.trim()) : timezone_id;
+      }
       if (date_from) filters.date_from = date_from;
       if (date_to) filters.date_to = date_to;
       
@@ -306,6 +320,36 @@ class RecordController {
         success: false,
         message: 'Error deleting all records',
         error: error.message
+      });
+    }
+  }
+
+  async getUniqueValues(req, res) {
+    try {
+      const { field } = req.params;
+      const { search = '', limit = 10 } = req.query;
+      
+      console.log('🔍 getUniqueValues called with:', { field, search, limit });
+      
+      if (!field) {
+        return res.status(400).json({
+          success: false,
+          message: 'Field parameter is required'
+        });
+      }
+
+      const values = await Record.getUniqueValues(field, search, parseInt(limit));
+      
+      res.json({
+        success: true,
+        data: values
+      });
+
+    } catch (error) {
+      console.error('❌ Error in getUniqueValues:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error retrieving unique values'
       });
     }
   }

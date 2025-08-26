@@ -20,6 +20,7 @@ import {
   Divider,
   Badge
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { 
   SearchOutlined, 
   FilterOutlined, 
@@ -46,6 +47,16 @@ export interface DemographicRecord {
   state: string;
   county: string;
   city: string;
+  timezone_id: number;
+  timezone_name: string;
+  timezone_display_name: string;
+  abbreviation_standard: string;
+  abbreviation_daylight?: string;
+  utc_offset_standard: number;
+  utc_offset_daylight?: number;
+  observes_dst: boolean;
+  timezone_description?: string;
+  timezone_states: string[];
   mhhi: string;
   mhhi_moe: string;
   avg_hhi: string;
@@ -97,6 +108,12 @@ const DemographicRecords: React.FC = () => {
   const [filteredZipcodes, setFilteredZipcodes] = useState<string[]>([]);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [advancedFilters, setAdvancedFilters] = useState<FilterConfig>({});
+  
+  // New state for Excel-like functionality
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [tableFilters, setTableFilters] = useState<Record<string, any>>({});
+  const [filteredRecords, setFilteredRecords] = useState<DemographicRecord[]>([]);
+  
   const { isAuthenticated } = useAuth();
   const { isDarkMode } = useTheme();
 
@@ -106,6 +123,11 @@ const DemographicRecords: React.FC = () => {
       fetchRecords();
     }
   }, [isAuthenticated, currentPage, pageSize, searchQuery, stateFilter, zipcodeFilter, sortBy, sortOrder, advancedFilters]);
+
+  // Update filtered records when records or table filters change
+  useEffect(() => {
+    setFilteredRecords(records);
+  }, [records]);
 
   const fetchStates = async () => {
     try {
@@ -234,8 +256,145 @@ const DemographicRecords: React.FC = () => {
     return `${parseInt(value).toLocaleString()}/mi²`;
   };
 
-  // Table columns configuration
-  const columns = [
+  // Row selection configuration
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (selectedKeys: React.Key[], selectedRows: DemographicRecord[]) => {
+      setSelectedRowKeys(selectedKeys);
+      console.log('Selected rows:', selectedRows);
+    },
+    onSelectAll: (selected: boolean, selectedRows: DemographicRecord[], changeRows: DemographicRecord[]) => {
+      console.log(selected ? 'Selected all rows' : 'Deselected all rows');
+    },
+    getCheckboxProps: (record: DemographicRecord) => ({
+      disabled: false,
+      name: record.zipcode,
+    }),
+  };
+
+  // Generate unique filter options for each column
+  const getUniqueValues = (key: keyof DemographicRecord) => {
+    const values = records.map(record => record[key]).filter(Boolean);
+    const uniqueValues = Array.from(new Set(values));
+    return uniqueValues.map(value => ({ 
+      text: value?.toString() || '', 
+      value: value?.toString() || '' 
+    }));
+  };
+
+  // Custom filter function for Excel-like behavior
+  const getColumnSearchProps = (dataIndex: keyof DemographicRecord, title: string) => ({
+    filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+      <div style={{ padding: 8 }}>
+        <Input
+          placeholder={`Search ${title}`}
+          value={selectedKeys[0]}
+          onChange={(e) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+          onPressEnter={() => confirm()}
+          style={{ marginBottom: 8, display: 'block' }}
+        />
+        <Space>
+          <Button
+            type="primary"
+            onClick={() => confirm()}
+            icon={<SearchOutlined />}
+            size="small"
+            style={{ width: 90 }}
+          >
+            Search
+          </Button>
+          <Button
+            onClick={() => {
+              clearFilters();
+              confirm();
+            }}
+            size="small"
+            style={{ width: 90 }}
+          >
+            Reset
+          </Button>
+        </Space>
+      </div>
+    ),
+    filterIcon: (filtered: boolean) => (
+      <SearchOutlined style={{ color: filtered ? '#1890ff' : undefined }} />
+    ),
+    onFilter: (value: boolean | React.Key, record: DemographicRecord) =>
+      record[dataIndex]
+        ?.toString()
+        .toLowerCase()
+        .includes(value.toString().toLowerCase()) ?? false,
+  });
+
+  // Handle bulk actions on selected rows
+  const handleBulkExport = () => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('Please select rows to export');
+      return;
+    }
+    
+    const selectedRecords = records.filter(record => selectedRowKeys.includes(record.id));
+    exportToCSV(selectedRecords, 'selected_demographic_records.csv');
+    message.success(`Exported ${selectedRecords.length} selected records`);
+  };
+
+  const handleBulkAction = (action: string) => {
+    if (selectedRowKeys.length === 0) {
+      message.warning('Please select rows first');
+      return;
+    }
+    
+    switch (action) {
+      case 'export':
+        handleBulkExport();
+        break;
+      case 'createFilter':
+        const selectedRecords = records.filter(record => selectedRowKeys.includes(record.id));
+        const zipcodes = selectedRecords.map(r => r.zipcode);
+        message.success(`Selected ${zipcodes.length} zipcodes for filter creation`);
+        // Could integrate with filter creation logic here
+        break;
+      default:
+        message.info(`Action "${action}" not implemented yet`);
+    }
+  };
+
+  // Export function
+  const exportToCSV = (data: DemographicRecord[], filename: string) => {
+    const headers = [
+      'Zipcode', 'State', 'County', 'City', 'Median HHI', 'Avg HHI', 'Per Capita Income',
+      'Age', 'Households', 'White %', 'Black %', 'Hispanic %'
+    ];
+    
+    const csvContent = [
+      headers.join(','),
+      ...data.map(record => [
+        record.zipcode,
+        record.state,
+        record.county,
+        record.city,
+        record.mhhi,
+        record.avg_hhi,
+        record.pc_income,
+        record.median_age,
+        record.households,
+        record.race_ethnicity_white,
+        record.race_ethnicity_black,
+        record.race_ethnicity_hispanic
+      ].map(field => `"${field}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Table columns configuration with Excel-like filtering
+  const columns: ColumnsType<DemographicRecord> = [
     {
       title: 'Zipcode',
       dataIndex: 'zipcode',
@@ -243,6 +402,9 @@ const DemographicRecords: React.FC = () => {
       sorter: true,
       width: 100,
       fixed: 'left' as const,
+      ...getColumnSearchProps('zipcode', 'Zipcode'),
+      filters: getUniqueValues('zipcode'),
+      onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.zipcode === value.toString(),
       render: (text: string) => (
         <Tag color="blue" style={{ fontWeight: 600 }}>
           {text}
@@ -258,8 +420,9 @@ const DemographicRecords: React.FC = () => {
           key: 'state',
           sorter: true,
           width: 120,
-          filters: states.map(state => ({ text: state, value: state })),
-          onFilter: (value: string, record: DemographicRecord) => record.state === value,
+          ...getColumnSearchProps('state', 'State'),
+          filters: getUniqueValues('state'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.state === value.toString(),
         },
         {
           title: 'County',
@@ -267,6 +430,9 @@ const DemographicRecords: React.FC = () => {
           key: 'county',
           width: 150,
           ellipsis: true,
+          ...getColumnSearchProps('county', 'County'),
+          filters: getUniqueValues('county'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.county === value.toString(),
         },
         {
           title: 'City',
@@ -274,6 +440,9 @@ const DemographicRecords: React.FC = () => {
           key: 'city',
           width: 150,
           ellipsis: true,
+          ...getColumnSearchProps('city', 'City'),
+          filters: getUniqueValues('city'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.city === value.toString(),
         },
       ],
     },
@@ -287,6 +456,9 @@ const DemographicRecords: React.FC = () => {
           sorter: true,
           width: 120,
           render: (text: string) => formatCurrency(text),
+          ...getColumnSearchProps('mhhi', 'Median HHI'),
+          filters: getUniqueValues('mhhi'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.mhhi === value.toString(),
         },
         {
           title: 'Avg HHI',
@@ -295,6 +467,9 @@ const DemographicRecords: React.FC = () => {
           sorter: true,
           width: 120,
           render: (text: string) => formatCurrency(text),
+          ...getColumnSearchProps('avg_hhi', 'Average HHI'),
+          filters: getUniqueValues('avg_hhi'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.avg_hhi === value.toString(),
         },
         {
           title: 'Per Capita',
@@ -303,6 +478,9 @@ const DemographicRecords: React.FC = () => {
           sorter: true,
           width: 120,
           render: (text: string) => formatCurrency(text),
+          ...getColumnSearchProps('pc_income', 'Per Capita Income'),
+          filters: getUniqueValues('pc_income'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.pc_income === value.toString(),
         },
         {
           title: '$200k+ %',
@@ -310,6 +488,9 @@ const DemographicRecords: React.FC = () => {
           key: 'pct_hh_w_income_200k_plus',
           width: 100,
           render: (text: string) => formatPercentage(text),
+          ...getColumnSearchProps('pct_hh_w_income_200k_plus', '$200k+ %'),
+          filters: getUniqueValues('pct_hh_w_income_200k_plus'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.pct_hh_w_income_200k_plus === value.toString(),
         },
       ],
     },
@@ -323,6 +504,9 @@ const DemographicRecords: React.FC = () => {
           sorter: true,
           width: 100,
           render: (text: string) => text || '-',
+          ...getColumnSearchProps('median_age', 'Median Age'),
+          filters: getUniqueValues('median_age'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.median_age === value.toString(),
         },
         {
           title: 'Population Density',
@@ -331,6 +515,9 @@ const DemographicRecords: React.FC = () => {
           sorter: true,
           width: 140,
           render: (text: string) => formatDensity(text),
+          ...getColumnSearchProps('pop_dens_sq_mi', 'Population Density'),
+          filters: getUniqueValues('pop_dens_sq_mi'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.pop_dens_sq_mi === value.toString(),
         },
         {
           title: 'White',
@@ -338,6 +525,9 @@ const DemographicRecords: React.FC = () => {
           key: 'race_ethnicity_white',
           width: 100,
           render: (text: string) => formatNumber(text),
+          ...getColumnSearchProps('race_ethnicity_white', 'White Population'),
+          filters: getUniqueValues('race_ethnicity_white'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.race_ethnicity_white === value.toString(),
         },
         {
           title: 'Black',
@@ -345,6 +535,9 @@ const DemographicRecords: React.FC = () => {
           key: 'race_ethnicity_black',
           width: 100,
           render: (text: string) => formatNumber(text),
+          ...getColumnSearchProps('race_ethnicity_black', 'Black Population'),
+          filters: getUniqueValues('race_ethnicity_black'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.race_ethnicity_black === value.toString(),
         },
         {
           title: 'Hispanic',
@@ -352,6 +545,9 @@ const DemographicRecords: React.FC = () => {
           key: 'race_ethnicity_hispanic',
           width: 120,
           render: (text: string) => formatNumber(text),
+          ...getColumnSearchProps('race_ethnicity_hispanic', 'Hispanic Population'),
+          filters: getUniqueValues('race_ethnicity_hispanic'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.race_ethnicity_hispanic === value.toString(),
         },
       ],
     },
@@ -365,6 +561,9 @@ const DemographicRecords: React.FC = () => {
           sorter: true,
           width: 100,
           render: (text: string) => formatNumber(text),
+          ...getColumnSearchProps('households', 'Total Households'),
+          filters: getUniqueValues('households'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.households === value.toString(),
         },
         {
           title: 'Family HH',
@@ -372,6 +571,9 @@ const DemographicRecords: React.FC = () => {
           key: 'family_hh_total',
           width: 100,
           render: (text: string) => formatNumber(text),
+          ...getColumnSearchProps('family_hh_total', 'Family Households'),
+          filters: getUniqueValues('family_hh_total'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.family_hh_total === value.toString(),
         },
       ],
     },
@@ -384,6 +586,9 @@ const DemographicRecords: React.FC = () => {
           key: 'edu_att_bachelors',
           width: 100,
           render: (text: string) => formatNumber(text),
+          ...getColumnSearchProps('edu_att_bachelors', "Bachelor's Education"),
+          filters: getUniqueValues('edu_att_bachelors'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.edu_att_bachelors === value.toString(),
         },
         {
           title: 'Unemployment %',
@@ -391,6 +596,9 @@ const DemographicRecords: React.FC = () => {
           key: 'unemployment_pct',
           width: 140,
           render: (text: string) => formatPercentage(text),
+          ...getColumnSearchProps('unemployment_pct', 'Unemployment Percentage'),
+          filters: getUniqueValues('unemployment_pct'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.unemployment_pct === value.toString(),
         },
       ],
     },
@@ -403,6 +611,9 @@ const DemographicRecords: React.FC = () => {
           key: 'housing_units',
           width: 120,
           render: (text: string) => formatNumber(text),
+          ...getColumnSearchProps('housing_units', 'Housing Units'),
+          filters: getUniqueValues('housing_units'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.housing_units === value.toString(),
         },
         {
           title: 'Owner Occupied',
@@ -410,6 +621,9 @@ const DemographicRecords: React.FC = () => {
           key: 'owner_occupied',
           width: 140,
           render: (text: string) => formatNumber(text),
+          ...getColumnSearchProps('owner_occupied', 'Owner Occupied'),
+          filters: getUniqueValues('owner_occupied'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.owner_occupied === value.toString(),
         },
       ],
     },
@@ -472,6 +686,9 @@ const DemographicRecords: React.FC = () => {
       </Card>
 
       {/* Basic Filters */}
+      {/* 
+      COMMENTED OUT - LEGACY SIDE FILTERS (Use Excel-like table filters instead)
+      
       <Card 
         title="Quick Filters" 
         size="small"
@@ -544,7 +761,6 @@ const DemographicRecords: React.FC = () => {
         </Row>
       </Card>
 
-      {/* Advanced Filters */}
       {showAdvancedFilters && (
         <AdvancedFilters
           filters={advancedFilters}
@@ -554,6 +770,60 @@ const DemographicRecords: React.FC = () => {
           loading={loading}
         />
       )}
+      */}
+
+      {/* New Excel-like Table Header with Bulk Actions */}
+      <Card 
+        title={
+          <Space>
+            <span>Demographic Records</span>
+            {selectedRowKeys.length > 0 && (
+              <Badge count={selectedRowKeys.length} style={{ backgroundColor: '#52c41a' }}>
+                <Tag color="green">Selected</Tag>
+              </Badge>
+            )}
+          </Space>
+        }
+        size="small"
+        className={`${isDarkMode ? 'dark' : 'light'}`}
+        extra={
+          <Space>
+            {selectedRowKeys.length > 0 && (
+              <>
+                <Button
+                  type="primary"
+                  icon={<DownloadOutlined />}
+                  onClick={() => handleBulkAction('export')}
+                  size="small"
+                >
+                  Export Selected ({selectedRowKeys.length})
+                </Button>
+                <Button
+                  icon={<FilterOutlined />}
+                  onClick={() => handleBulkAction('createFilter')}
+                  size="small"
+                >
+                  Create Filter
+                </Button>
+              </>
+            )}
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={fetchRecords}
+              loading={loading}
+              size="small"
+            >
+              Refresh
+            </Button>
+          </Space>
+        }
+      >
+        <div style={{ marginBottom: 16 }}>
+          <Text type="secondary">
+            🔍 Use column filters to search and filter data • ✅ Select rows for bulk actions • 📊 Showing {records.length} of {total} records
+          </Text>
+        </div>
+      </Card>
 
       {/* Error Display */}
       {error && (
@@ -591,10 +861,12 @@ const DemographicRecords: React.FC = () => {
         }
       >
         <Table
+        
           columns={columns}
           dataSource={records}
           rowKey="id"
           loading={loading}
+          rowSelection={rowSelection}
           pagination={{
             current: currentPage,
             pageSize: pageSize,

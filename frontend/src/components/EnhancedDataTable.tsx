@@ -24,7 +24,8 @@ import {
   FilterOutlined, 
   DownloadOutlined,
   DeleteOutlined,
-  EyeOutlined
+  EyeOutlined,
+  PhoneOutlined
 } from '@ant-design/icons';
 import { recordApi, Record } from '../api/recordApi';
 import { downloadApi, CSVExportRequest } from '../api/downloadApi';
@@ -49,6 +50,8 @@ const EnhancedDataTable: React.FC<EnhancedDataTableProps> = ({ refreshTrigger })
   const [downloadHistory, setDownloadHistory] = useState<any[]>([]);
   const [downloadStats, setDownloadStats] = useState<any>(null);
   const [form] = Form.useForm();
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [selectedRecords, setSelectedRecords] = useState<Record[]>([]);
 
   const [pagination, setPagination] = useState({
     current: 1,
@@ -185,6 +188,36 @@ const EnhancedDataTable: React.FC<EnhancedDataTableProps> = ({ refreshTrigger })
     }
   };
 
+  const handleGeneratePhoneNumbers = async () => {
+    if (selectedRecords.length === 0) {
+      message.warning('Please select records to generate phone numbers');
+      return;
+    }
+
+    try {
+      // Extract unique zipcodes from selected records
+      const zipcodes = Array.from(new Set(selectedRecords.map(record => record.zip)));
+      
+      // Navigate to Comprehensive Dashboard with the zipcodes
+      const params = new URLSearchParams({
+        zipcodes: zipcodes.join(',')
+      });
+      
+      window.location.href = `/dashboard?${params.toString()}`;
+    } catch (error) {
+      console.error('Error generating phone numbers:', error);
+      message.error('Failed to generate phone numbers');
+    }
+  };
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (selectedKeys: React.Key[], selectedRows: Record[]) => {
+      setSelectedRowKeys(selectedKeys);
+      setSelectedRecords(selectedRows);
+    },
+  };
+
   const clearFilters = () => {
     setActiveFilters({});
     setPagination(prev => ({ ...prev, current: 1 }));
@@ -244,6 +277,30 @@ const EnhancedDataTable: React.FC<EnhancedDataTableProps> = ({ refreshTrigger })
       key: 'rc',
       width: 200,
       sorter: true,
+    },
+    {
+      title: 'Timezone',
+      dataIndex: 'timezone_display_name',
+      key: 'timezone',
+      width: 150,
+      sorter: true,
+      render: (text: string, record: Record) => {
+        if (!record.timezone_display_name) {
+          return <Text type="secondary">-</Text>;
+        }
+        
+        // Determine current abbreviation based on DST
+        const isDST = record.observes_dst && record.abbreviation_daylight;
+        const currentAbbr = isDST ? record.abbreviation_daylight : record.abbreviation_standard;
+        
+        return (
+          <Tooltip title={`${record.timezone_display_name} (${currentAbbr})`}>
+            <Tag color="purple">
+              {currentAbbr || record.abbreviation_standard}
+            </Tag>
+          </Tooltip>
+        );
+      },
     },
     {
       title: 'Created At',
@@ -365,10 +422,17 @@ const EnhancedDataTable: React.FC<EnhancedDataTableProps> = ({ refreshTrigger })
                   </Space>
                 )}
                 <Button
+                  type="primary"
+                  icon={<PhoneOutlined />}
+                  onClick={handleGeneratePhoneNumbers}
+                  disabled={selectedRecords.length === 0}
+                >
+                  Generate Phone Numbers ({selectedRecords.length})
+                </Button>
+                <Button
                   icon={<DownloadOutlined />}
                   onClick={handleExportCSV}
                   loading={exportLoading}
-                  type="primary"
                 >
                   Export CSV
                 </Button>
@@ -398,6 +462,7 @@ const EnhancedDataTable: React.FC<EnhancedDataTableProps> = ({ refreshTrigger })
           loading={loading}
           onChange={handleTableChange}
           scroll={{ x: 1200 }}
+          rowSelection={rowSelection}
         />
       </Card>
 

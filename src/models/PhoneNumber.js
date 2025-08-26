@@ -7,8 +7,8 @@ class PhoneNumber {
     try {
       const jobId = uuidv4();
       
-      // Handle null run_id for CSV-based generation
-      if (runId === 'csv-generated') {
+      // Handle null run_id for CSV-based generation and direct NPA NXX generation
+      if (runId === 'csv-generated' || runId === 'npa-nxx-records') {
         runId = null;
       }
       
@@ -127,9 +127,9 @@ class PhoneNumber {
 
       const query = `
         INSERT INTO phone_numbers (
-          job_id, run_id, zip, npa, nxx, thousands, full_phone_number, 
+          job_id, run_id, zip, npa, nxx, thousands, last_three, full_phone_number, 
           state, timezone, company_type, company, ratecenter, filter_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
         ON CONFLICT (full_phone_number, job_id) DO NOTHING
         RETURNING id
       `;
@@ -147,6 +147,7 @@ class PhoneNumber {
             phoneNumber.npa,
             phoneNumber.nxx,
             phoneNumber.thousands,
+            phoneNumber.last_three,
             phoneNumber.full_phone_number,
             phoneNumber.state,
             phoneNumber.timezone,
@@ -327,6 +328,161 @@ class PhoneNumber {
       return result.rowCount;
     } catch (error) {
       console.error('Error deleting phone numbers by run ID:', error);
+      throw error;
+    }
+  }
+
+  // Check if phone numbers already exist for a zipcode
+  static async checkExistingPhoneNumbersForZip(zip) {
+    try {
+      const query = `
+        SELECT COUNT(*) as count, 
+               COUNT(DISTINCT job_id) as job_count,
+               MAX(created_at) as latest_generated
+        FROM phone_numbers 
+        WHERE zip = $1
+      `;
+      
+      const result = await db.query(query, [zip]);
+      const row = result.rows[0];
+      
+      return {
+        exists: parseInt(row.count) > 0,
+        count: parseInt(row.count),
+        job_count: parseInt(row.job_count),
+        latest_generated: row.latest_generated
+      };
+    } catch (error) {
+      console.error('Error checking existing phone numbers for zip:', error);
+      throw error;
+    }
+  }
+
+  // Check if phone numbers exist for a specific zipcode and filter combination
+  static async checkExistingPhoneNumbersForZipAndFilter(zip, filterId) {
+    try {
+      const query = `
+        SELECT COUNT(*) as count,
+               MAX(created_at) as latest_generated
+        FROM phone_numbers 
+        WHERE zip = $1 AND filter_id = $2
+      `;
+      
+      const result = await db.query(query, [zip, filterId]);
+      const row = result.rows[0];
+      
+      return {
+        exists: parseInt(row.count) > 0,
+        count: parseInt(row.count),
+        latest_generated: row.latest_generated
+      };
+    } catch (error) {
+      console.error('Error checking existing phone numbers for zip and filter:', error);
+      throw error;
+    }
+  }
+
+  // Get all phone number jobs with optional filters
+  static async getAllJobs(filters = {}) {
+    try {
+      let query = `
+        SELECT * FROM phone_number_jobs 
+        WHERE 1=1
+      `;
+      const values = [];
+      let valueIndex = 1;
+
+      if (filters.zip) {
+        query += ` AND zip = $${valueIndex++}`;
+        values.push(filters.zip);
+      }
+
+      if (filters.run_id) {
+        query += ` AND run_id = $${valueIndex++}`;
+        values.push(filters.run_id);
+      }
+
+      if (filters.filter_id) {
+        query += ` AND filter_id = $${valueIndex++}`;
+        values.push(filters.filter_id);
+      }
+
+      if (filters.status) {
+        query += ` AND status = $${valueIndex++}`;
+        values.push(filters.status);
+      }
+
+      query += ` ORDER BY created_at DESC`;
+      
+      const result = await db.query(query, values);
+      return result.rows;
+    } catch (error) {
+      console.error('Error getting all phone number jobs:', error);
+      throw error;
+    }
+  }
+
+  // Get phone numbers by filter ID
+  static async getPhoneNumbersByFilter(filterId, page = 1, limit = 100) {
+    try {
+      const offset = (page - 1) * limit;
+      
+      const query = `
+        SELECT * FROM phone_numbers 
+        WHERE filter_id = $1 
+        ORDER BY created_at DESC 
+        LIMIT $2 OFFSET $3
+      `;
+      
+      const countQuery = `
+        SELECT COUNT(*) FROM phone_numbers WHERE filter_id = $1
+      `;
+
+      const [result, countResult] = await Promise.all([
+        db.query(query, [filterId, limit, offset]),
+        db.query(countQuery, [filterId])
+      ]);
+
+      return {
+        phoneNumbers: result.rows,
+        pagination: {
+          total: parseInt(countResult.rows[0].count),
+          page,
+          limit,
+          totalPages: Math.ceil(parseInt(countResult.rows[0].count) / limit)
+        }
+      };
+    } catch (error) {
+      console.error('Error getting phone numbers by filter ID:', error);
+      throw error;
+    }
+  }
+
+  // Get filter dashboard with phone number counts
+  static async getFilterDashboard() {
+    try {
+      const query = `
+        SELECT 
+          f.id as filter_id,
+          f.name as filter_name,
+          f.filter_type,
+          f.is_active,
+          f.created_at as filter_created_at,
+          COUNT(pn.id) as phone_number_count,
+          COUNT(DISTINCT pn.zip) as unique_zipcodes,
+          COUNT(DISTINCT pn.job_id) as job_count,
+          MAX(pn.created_at) as latest_generation
+        FROM user_filters f
+        LEFT JOIN phone_numbers pn ON f.id = pn.filter_id
+        WHERE f.filter_type = 'demographic'
+        GROUP BY f.id, f.name, f.filter_type, f.is_active, f.created_at
+        ORDER BY f.created_at DESC
+      `;
+      
+      const result = await db.query(query);
+      return result.rows;
+    } catch (error) {
+      console.error('Error getting filter dashboard:', error);
       throw error;
     }
   }

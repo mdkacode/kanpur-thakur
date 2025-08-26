@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Button, Spin, Alert, Tabs, Tag, message } from 'antd';
 import { DownloadOutlined, EyeOutlined, FileTextOutlined, PhoneOutlined } from '@ant-design/icons';
 import { telecareApi } from '../api/telecareApi';
-import { generateFromCSV } from '../api/phoneNumberApi';
+import { generateFromCSV, generateFromNpaNxxRecords } from '../api/phoneNumberApi';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface FileViewerModalProps {
@@ -77,21 +77,34 @@ const FileViewerModal: React.FC<FileViewerModalProps> = ({
   };
 
   const handleGeneratePhoneNumbers = async () => {
-    if (!outputContent) {
-      message.error('No output CSV content available');
-      return;
-    }
-
     setGeneratingPhoneNumbers(true);
     setError('');
 
     try {
-      const response = await generateFromCSV(outputContent.content, zipcode);
+      // Try direct NPA NXX generation first (no telecare required)
+      let response;
+      try {
+        response = await generateFromNpaNxxRecords(zipcode);
+        
+        if (response.success) {
+          setSuccessMessage('Phone number generation started successfully from NPA NXX records! Check the phone number jobs section for progress.');
+          message.success('Phone number generation started successfully!');
+          return;
+        }
+      } catch (directError: any) {
+        console.log('Direct generation failed, trying CSV fallback:', directError.message);
+      }
+
+      // Fallback to CSV generation if direct generation fails
+      if (!outputContent) {
+        throw new Error('No NPA NXX records found for this zipcode and no output CSV content available');
+      }
+
+      response = await generateFromCSV(outputContent.content, zipcode);
       
       if (response.success) {
-        setSuccessMessage('Phone number generation started successfully! Check the phone number jobs section for progress.');
+        setSuccessMessage('Phone number generation started successfully from CSV! Check the phone number jobs section for progress.');
         message.success('Phone number generation started successfully!');
-        // Don't close modal immediately, let user see the success message
       } else {
         throw new Error(response.message || 'Failed to start phone number generation');
       }
@@ -257,6 +270,7 @@ const FileViewerModal: React.FC<FileViewerModalProps> = ({
                 loading={generatingPhoneNumbers}
                 disabled={generatingPhoneNumbers}
                 className="bg-green-600 hover:bg-green-700 border-green-600"
+                title="Generate phone numbers directly from NPA NXX records - no telecare required!"
               >
                 Generate Phone Numbers
               </Button>

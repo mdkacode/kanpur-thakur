@@ -23,6 +23,9 @@ router.get('/records/state/:state', recordController.getRecordsByState);
 // Get statistics
 router.get('/stats', recordController.getStats);
 
+// Get unique values for a field (for filter dropdowns)
+router.get('/records/unique/:field', recordController.getUniqueValues);
+
 // Delete record
 router.delete('/records/:id', recordController.deleteRecord);
 

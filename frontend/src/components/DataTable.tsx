@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Input, Space, Button, Card, Tag, Typography, Select, Tooltip } from 'antd';
-import { SearchOutlined, ReloadOutlined, FilterOutlined } from '@ant-design/icons';
+import { Table, Input, Space, Button, Card, Tag, Typography, Select, Tooltip, message } from 'antd';
+import { SearchOutlined, ReloadOutlined, FilterOutlined, PhoneOutlined } from '@ant-design/icons';
 import { recordApi, Record } from '../api/recordApi';
+import { recordFilterApi, RecordFilterConfig } from '../api/recordFilterApi';
+import RecordFilterModal from './RecordFilterModal';
 import { format } from 'date-fns';
 
 const { Search } = Input;
@@ -27,8 +29,12 @@ const DataTable: React.FC<DataTableProps> = ({ refreshTrigger }) => {
   const [searchText, setSearchText] = useState('');
   const [sortBy, setSortBy] = useState('created_at');
   const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
+  const [filterModalVisible, setFilterModalVisible] = useState(false);
+  const [currentFilters, setCurrentFilters] = useState<RecordFilterConfig>({});
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [selectedRecords, setSelectedRecords] = useState<Record[]>([]);
 
-  const fetchRecords = async (page = 1, pageSize = 50, search?: string) => {
+  const fetchRecords = async (page = 1, pageSize = 50, search?: string, filters?: RecordFilterConfig) => {
     setLoading(true);
     try {
       const response = await recordApi.getAllRecords(
@@ -36,7 +42,8 @@ const DataTable: React.FC<DataTableProps> = ({ refreshTrigger }) => {
         pageSize,
         search,
         sortBy,
-        sortOrder
+        sortOrder,
+        filters
       );
       
       setRecords(response.data);
@@ -74,7 +81,43 @@ const DataTable: React.FC<DataTableProps> = ({ refreshTrigger }) => {
   };
 
   const handleRefresh = () => {
-    fetchRecords(pagination.current, pagination.pageSize, searchText);
+    fetchRecords(pagination.current, pagination.pageSize, searchText, currentFilters);
+  };
+
+  const handleApplyFilters = (filters: RecordFilterConfig) => {
+    setCurrentFilters(filters);
+    setPagination(prev => ({ ...prev, current: 1 }));
+    fetchRecords(1, pagination.pageSize, searchText, filters);
+  };
+
+  const handleGeneratePhoneNumbers = async () => {
+    if (selectedRecords.length === 0) {
+      message.warning('Please select records to generate phone numbers');
+      return;
+    }
+
+    try {
+      // Extract unique zipcodes from selected records
+      const zipcodes = Array.from(new Set(selectedRecords.map(record => record.zip)));
+      
+      // Navigate to Comprehensive Dashboard with the zipcodes
+      const params = new URLSearchParams({
+        zipcodes: zipcodes.join(',')
+      });
+      
+      window.location.href = `/dashboard?${params.toString()}`;
+    } catch (error) {
+      console.error('Error generating phone numbers:', error);
+      message.error('Failed to generate phone numbers');
+    }
+  };
+
+  const rowSelection = {
+    selectedRowKeys,
+    onChange: (selectedKeys: React.Key[], selectedRows: Record[]) => {
+      setSelectedRowKeys(selectedKeys);
+      setSelectedRecords(selectedRows);
+    },
   };
 
   const getStatusTag = (status: string) => {
@@ -155,6 +198,30 @@ const DataTable: React.FC<DataTableProps> = ({ refreshTrigger }) => {
       ),
     },
     {
+      title: 'Timezone',
+      dataIndex: 'timezone_display_name',
+      key: 'timezone',
+      width: 150,
+      sorter: true,
+      render: (text: string, record: Record) => {
+        if (!record.timezone_display_name) {
+          return <Text type="secondary">-</Text>;
+        }
+        
+        // Determine current abbreviation based on DST
+        const isDST = record.observes_dst && record.abbreviation_daylight;
+        const currentAbbr = isDST ? record.abbreviation_daylight : record.abbreviation_standard;
+        
+        return (
+          <Tooltip title={`${record.timezone_display_name} (${currentAbbr})`}>
+            <Tag color="purple">
+              {currentAbbr || record.abbreviation_standard}
+            </Tag>
+          </Tooltip>
+        );
+      },
+    },
+    {
       title: 'Created',
       dataIndex: 'created_at',
       key: 'created_at',
@@ -194,8 +261,9 @@ const DataTable: React.FC<DataTableProps> = ({ refreshTrigger }) => {
             <Option value="npa">NPA</Option>
             <Option value="nxx">NXX</Option>
             <Option value="zip">ZIP</Option>
-            <Option value="state">State</Option>
+            <Option value="state_code">State</Option>
             <Option value="city">City</Option>
+            <Option value="timezone_display_name">Timezone</Option>
           </Select>
           <Select
             value={sortOrder}
@@ -206,15 +274,31 @@ const DataTable: React.FC<DataTableProps> = ({ refreshTrigger }) => {
             <Option value="DESC">Desc</Option>
             <Option value="ASC">Asc</Option>
           </Select>
+          <Button
+            icon={<FilterOutlined />}
+            onClick={() => setFilterModalVisible(true)}
+            size="large"
+          >
+            Filters
+          </Button>
         </Space>
-        <Button
-          type="primary"
-          icon={<ReloadOutlined />}
-          onClick={handleRefresh}
-          loading={loading}
-        >
-          Refresh
-        </Button>
+        <Space>
+          <Button
+            type="primary"
+            icon={<PhoneOutlined />}
+            onClick={handleGeneratePhoneNumbers}
+            disabled={selectedRecords.length === 0}
+          >
+            Generate Phone Numbers ({selectedRecords.length})
+          </Button>
+          <Button
+            icon={<ReloadOutlined />}
+            onClick={handleRefresh}
+            loading={loading}
+          >
+            Refresh
+          </Button>
+        </Space>
       </Space>
 
       <Table
@@ -227,6 +311,17 @@ const DataTable: React.FC<DataTableProps> = ({ refreshTrigger }) => {
         scroll={{ x: 1200 }}
         size="middle"
         bordered
+        rowSelection={rowSelection}
+      />
+
+      <RecordFilterModal
+        visible={filterModalVisible}
+        onCancel={() => setFilterModalVisible(false)}
+        onApply={handleApplyFilters}
+        currentFilters={currentFilters}
+        onSaveFilter={(name, filters) => {
+          // This will be handled by the modal itself
+        }}
       />
     </Card>
   );

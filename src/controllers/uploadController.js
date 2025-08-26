@@ -138,7 +138,7 @@ class UploadController {
 
   async getUploadStats(req, res) {
     try {
-      const stats = await FileUpload.getStats();
+      const stats = await FileUpload.getStatsByType();
 
       res.json({
         success: true,

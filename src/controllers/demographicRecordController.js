@@ -15,6 +15,15 @@ class DemographicRecordController {
         zipcode,
         county,
         city,
+        timezone,
+        // Array-based filters
+        mhhi,
+        avg_hhi,
+        median_age,
+        households,
+        race_ethnicity_white,
+        race_ethnicity_black,
+        race_ethnicity_hispanic,
         // Income & Economic
         mhhi_min,
         mhhi_max,
@@ -78,6 +87,38 @@ class DemographicRecordController {
       if (city && city.trim()) {
         filters.city = city.trim().split(',').map(s => s.trim()).filter(s => s);
         console.log('🔍 Processed city filter:', filters.city);
+      }
+      if (timezone && timezone.trim()) {
+        filters.timezone = timezone.trim().split(',').map(s => s.trim()).filter(s => s);
+        console.log('🔍 Processed timezone filter:', filters.timezone);
+      }
+      if (mhhi && mhhi.trim()) {
+        filters.mhhi = mhhi.trim().split(',').map(s => s.trim()).filter(s => s);
+        console.log('🔍 Processed mhhi filter:', filters.mhhi);
+      }
+      if (avg_hhi && avg_hhi.trim()) {
+        filters.avg_hhi = avg_hhi.trim().split(',').map(s => s.trim()).filter(s => s);
+        console.log('🔍 Processed avg_hhi filter:', filters.avg_hhi);
+      }
+      if (median_age && median_age.trim()) {
+        filters.median_age = median_age.trim().split(',').map(s => s.trim()).filter(s => s);
+        console.log('🔍 Processed median_age filter:', filters.median_age);
+      }
+      if (households && households.trim()) {
+        filters.households = households.trim().split(',').map(s => s.trim()).filter(s => s);
+        console.log('🔍 Processed households filter:', filters.households);
+      }
+      if (race_ethnicity_white && race_ethnicity_white.trim()) {
+        filters.race_ethnicity_white = race_ethnicity_white.trim().split(',').map(s => s.trim()).filter(s => s);
+        console.log('🔍 Processed race_ethnicity_white filter:', filters.race_ethnicity_white);
+      }
+      if (race_ethnicity_black && race_ethnicity_black.trim()) {
+        filters.race_ethnicity_black = race_ethnicity_black.trim().split(',').map(s => s.trim()).filter(s => s);
+        console.log('🔍 Processed race_ethnicity_black filter:', filters.race_ethnicity_black);
+      }
+      if (race_ethnicity_hispanic && race_ethnicity_hispanic.trim()) {
+        filters.race_ethnicity_hispanic = race_ethnicity_hispanic.trim().split(',').map(s => s.trim()).filter(s => s);
+        console.log('🔍 Processed race_ethnicity_hispanic filter:', filters.race_ethnicity_hispanic);
       }
 
       const advancedFilters = {};

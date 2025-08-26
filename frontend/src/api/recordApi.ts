@@ -8,6 +8,16 @@ export interface Record {
   state_code: string;
   city: string;
   rc: string;
+  timezone_id?: number;
+  timezone_name?: string;
+  timezone_display_name?: string;
+  abbreviation_standard?: string;
+  abbreviation_daylight?: string;
+  utc_offset_standard?: number;
+  utc_offset_daylight?: number;
+  observes_dst?: boolean;
+  timezone_description?: string;
+  timezone_states?: string[];
   created_at: string;
   updated_at: string;
 }
@@ -39,12 +49,13 @@ export const recordApi = {
     sortBy = 'created_at',
     sortOrder = 'DESC',
     filters?: {
-      npa?: string;
-      nxx?: string;
-      zip?: string;
-      state_code?: string;
-      city?: string;
-      rc?: string;
+      npa?: string | string[];
+      nxx?: string | string[];
+      zip?: string | string[];
+      state_code?: string | string[];
+      city?: string | string[];
+      rc?: string | string[];
+      timezone_id?: string | string[] | number | number[];
       date_from?: string;
       date_to?: string;
     }
@@ -62,12 +73,55 @@ export const recordApi = {
 
     // Add filter parameters
     if (filters) {
-      if (filters.npa) params.append('npa', filters.npa);
-      if (filters.nxx) params.append('nxx', filters.nxx);
-      if (filters.zip) params.append('zip', filters.zip);
-      if (filters.state_code) params.append('state_code', filters.state_code);
-      if (filters.city) params.append('city', filters.city);
-      if (filters.rc) params.append('rc', filters.rc);
+      if (filters.npa) {
+        if (Array.isArray(filters.npa)) {
+          filters.npa.forEach(value => params.append('npa', value));
+        } else {
+          params.append('npa', filters.npa);
+        }
+      }
+      if (filters.nxx) {
+        if (Array.isArray(filters.nxx)) {
+          filters.nxx.forEach(value => params.append('nxx', value));
+        } else {
+          params.append('nxx', filters.nxx);
+        }
+      }
+      if (filters.zip) {
+        if (Array.isArray(filters.zip)) {
+          filters.zip.forEach(value => params.append('zip', value));
+        } else {
+          params.append('zip', filters.zip);
+        }
+      }
+      if (filters.state_code) {
+        if (Array.isArray(filters.state_code)) {
+          filters.state_code.forEach(value => params.append('state_code', value));
+        } else {
+          params.append('state_code', filters.state_code);
+        }
+      }
+      if (filters.city) {
+        if (Array.isArray(filters.city)) {
+          filters.city.forEach(value => params.append('city', value));
+        } else {
+          params.append('city', filters.city);
+        }
+      }
+      if (filters.rc) {
+        if (Array.isArray(filters.rc)) {
+          filters.rc.forEach(value => params.append('rc', value));
+        } else {
+          params.append('rc', filters.rc);
+        }
+      }
+      if (filters.timezone_id) {
+        if (Array.isArray(filters.timezone_id)) {
+          filters.timezone_id.forEach(value => params.append('timezone_id', value.toString()));
+        } else {
+          params.append('timezone_id', filters.timezone_id.toString());
+        }
+      }
       if (filters.date_from) params.append('date_from', filters.date_from);
       if (filters.date_to) params.append('date_to', filters.date_to);
     }
