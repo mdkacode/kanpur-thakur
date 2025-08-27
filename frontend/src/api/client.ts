@@ -4,7 +4,7 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000/api
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 600000, // 10 minutes for large file uploads
   withCredentials: true, // Important for cookies
   headers: {
     'Content-Type': 'application/json',

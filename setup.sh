@@ -127,7 +127,7 @@ JWT_EXPIRES_IN=24h
 
 # File Upload Configuration
 UPLOAD_DIR=$APP_DIR/uploads
-MAX_FILE_SIZE=100MB
+MAX_FILE_SIZE=200MB
 
 # Python Environment
 PYTHON_PATH=/root/venv/bin/python

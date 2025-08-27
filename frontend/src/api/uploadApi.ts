@@ -43,13 +43,19 @@ export interface UploadStats {
 }
 
 export const uploadApi = {
-  uploadFile: async (file: File): Promise<UploadResponse> => {
+  uploadFile: async (file: File, onProgress?: (progress: number) => void): Promise<UploadResponse> => {
     const formData = new FormData();
     formData.append('file', file);
     
     const response = await apiClient.post('/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
+      },
+      onUploadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          onProgress(progress);
+        }
       },
     });
     

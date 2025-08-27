@@ -37,9 +37,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess }) => {
       return;
     }
 
-    // Validate file size (200MB)
-    if (file.size > 200 * 1024 * 1024) {
-      message.error('File size must be less than 200MB');
+    // Validate file size (300MB)
+    if (file.size > 300 * 1024 * 1024) {
+      message.error('File size must be less than 300MB');
       return;
     }
 
@@ -47,20 +47,10 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess }) => {
     setUploadProgress(0);
 
     try {
-      // Simulate upload progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return 90;
-          }
-          return prev + 10;
-        });
-      }, 200);
-
-      const response = await uploadApi.uploadFile(file);
+      const response = await uploadApi.uploadFile(file, (progress) => {
+        setUploadProgress(progress);
+      });
       
-      clearInterval(progressInterval);
       setUploadProgress(100);
       
       message.success('File uploaded successfully! Processing started.');
