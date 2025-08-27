@@ -50,7 +50,7 @@ const UploadPage: React.FC<UploadPageProps> = ({ onUploadSuccess }) => {
       </div>
 
       {/* Upload Method Comparison */}
-      <Card
+      {/* <Card
         style={{
           background: isDarkMode ? '#1f1f1f' : '#ffffff',
           border: `1px solid ${isDarkMode ? '#303030' : '#f0f0f0'}`,
@@ -90,7 +90,7 @@ const UploadPage: React.FC<UploadPageProps> = ({ onUploadSuccess }) => {
             </div>
           </div>
         </div>
-      </Card>
+      </Card> */}
 
       {/* Upload Tabs */}
       <Card
