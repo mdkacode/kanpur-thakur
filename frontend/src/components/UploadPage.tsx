@@ -144,7 +144,7 @@ const UploadPage: React.FC<UploadPageProps> = ({ onUploadSuccess }) => {
               ),
               children: (
                 <div style={{ padding: '20px 0' }}>
-                  <Alert
+                  {/* <Alert
                     message="Multiple File Upload"
                     description="Upload multiple smaller files (up to 100MB each) one by one. This method is more reliable and provides better error handling."
                     type="success"
@@ -155,7 +155,7 @@ const UploadPage: React.FC<UploadPageProps> = ({ onUploadSuccess }) => {
                       backgroundColor: isDarkMode ? '#1a1a1a' : '#f6ffed',
                       border: isDarkMode ? '1px solid #303030' : '1px solid #b7eb8f'
                     }}
-                  />
+                  /> */}
                   <MultipleFileUpload onUploadSuccess={handleMultipleUploadSuccess} />
                 </div>
               )
