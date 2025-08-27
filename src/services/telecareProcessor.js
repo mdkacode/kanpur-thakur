@@ -104,23 +104,33 @@ class TelecareProcessor {
       
       await fs.writeFile(tempInputPath, inputCsvPath);
       
-      // Use hardcoded script content to avoid file reading issues
-      console.log('🔧 Using hardcoded script content...');
+      // Use enhanced script content with Tor functionality and better error handling
+      console.log('🔧 Using enhanced script content with Tor IP rotation...');
       const scriptContent = `import time
 import os
 import requests
+import random
+import subprocess
+import logging
 import sys
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
-# Try to import webdriver-manager, but fallback gracefully if not available
-try:
-    from webdriver_manager.chrome import ChromeDriverManager
-    WEBDRIVER_MANAGER_AVAILABLE = True
-except ImportError:
-    WEBDRIVER_MANAGER_AVAILABLE = False
+# Setup logging for ethical hacking
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('ethical_hacking.log'),
+        logging.StreamHandler()
+    ]
+)
 
 # --- Config ---
 LOGIN_URL = "https://www.telcodata.us/login"
@@ -131,106 +141,280 @@ CSV_PATH = os.path.join(os.getcwd(), "sample_input.csv")
 DOWNLOAD_DIR = os.getcwd()
 OUTPUT_FILE = os.path.join(DOWNLOAD_DIR, "telcodata_bulk_output.csv")
 
+class EthicalHackingRotator:
+    """IP rotation for ethical hacking and scam protection"""
+    
+    def __init__(self):
+        self.tor_control_port = 9051
+        self.tor_password = "1234"  # Change this!
+        self.current_ip = None
+        self.rotation_count = 0
+        
+    def setup_tor(self):
+        """Setup Tor for IP rotation"""
+        try:
+            # Install Tor if not present
+            subprocess.run(["sudo", "apt-get", "update"], check=True)
+            subprocess.run(["sudo", "apt-get", "install", "-y", "tor"], check=True)
+            
+            # Configure Tor
+            self.configure_tor()
+            
+            # Start Tor service
+            subprocess.run(["sudo", "systemctl", "start", "tor"], check=True)
+            subprocess.run(["sudo", "systemctl", "enable", "tor"], check=True)
+            
+            logging.info("✓ Tor setup complete")
+            return True
+        except Exception as e:
+            logging.error(f"❌ Tor setup failed: {e}")
+            return False
+    
+    def configure_tor(self):
+        """Configure Tor for optimal performance"""
+        torrc_content = f"""
+# Ethical hacking Tor configuration
+SocksPort 9050
+ControlPort 9051
+CookieAuthentication 1
+HashedControlPassword {self.generate_tor_password_hash()}
+
+# Performance settings
+MaxCircuitDirtiness 300
+NewCircuitPeriod 90
+CircuitBuildTimeout 30
+
+# Security settings
+SafeLogging 1
+Log notice file /var/log/tor/notices.log
+
+# Exit nodes for IP diversity
+ExitNodes {{{{US}}}} {{{{CA}}}} {{{{GB}}}} {{{{DE}}}} {{{{NL}}}}
+StrictExitNodes 1
+"""
+        
+        with open('/etc/tor/torrc', 'w') as f:
+            f.write(torrc_content)
+        
+        # Restart Tor service
+        subprocess.run(["sudo", "systemctl", "restart", "tor"], check=True)
+    
+    def generate_tor_password_hash(self):
+        """Generate Tor password hash"""
+        try:
+            result = subprocess.run(["tor", "--hash-password", self.tor_password], 
+                                  capture_output=True, text=True)
+            return result.stdout.strip()
+        except:
+            return "16:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+    
+    def rotate_ip(self):
+        """Rotate IP using Tor"""
+        try:
+            import socket
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect(('127.0.0.1', self.tor_control_port))
+            
+            # Authenticate
+            sock.send(f'AUTHENTICATE "{self.tor_password}"\\r\\n'.encode())
+            response = sock.recv(1024).decode()
+            
+            if '250 OK' not in response:
+                logging.error(f"❌ Tor authentication failed: {response}")
+                return False
+            
+            # Request new circuit
+            sock.send('SIGNAL NEWNYM\\r\\n'.encode())
+            response = sock.recv(1024).decode()
+            
+            if '250 OK' in response:
+                self.rotation_count += 1
+                logging.info(f"✓ IP rotated (Rotation #{self.rotation_count})")
+                
+                # Wait for circuit to establish
+                time.sleep(random.uniform(3, 7))
+                
+                # Get new IP
+                new_ip = self.get_current_ip()
+                if new_ip:
+                    self.current_ip = new_ip
+                    logging.info(f"✓ New IP: {new_ip}")
+                
+                return True
+            else:
+                logging.error(f"❌ IP rotation failed: {response}")
+                return False
+                
+        except Exception as e:
+            logging.error(f"❌ IP rotation error: {e}")
+            return False
+        finally:
+            sock.close()
+    
+    def get_current_ip(self):
+        """Get current IP through Tor"""
+        try:
+            proxies = {
+                'http': 'socks5://127.0.0.1:9050',
+                'https': 'socks5://127.0.0.1:9050'
+            }
+            response = requests.get('http://httpbin.org/ip', proxies=proxies, timeout=15)
+            ip_data = response.json()
+            return ip_data['origin']
+        except Exception as e:
+            logging.error(f"❌ Could not get IP: {e}")
+            return None
+    
+    def setup_browser_with_tor(self):
+        """Setup Chrome browser with Tor proxy"""
+        options = Options()
+        options.add_argument('--proxy-server=socks5://127.0.0.1:9050')
+        options.add_argument('--headless')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--disable-extensions')
+        
+        # Server optimizations
+        options.add_argument('--disable-background-timer-throttling')
+        options.add_argument('--disable-backgrounding-occluded-windows')
+        options.add_argument('--disable-renderer-backgrounding')
+        
+        # Anti-detection for ethical hacking
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+        
+        # Random user agent
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+        ]
+        options.add_argument(f'--user-agent={random.choice(user_agents)}')
+        
+        return options
+
+def add_random_delays():
+    """Add random delays to mimic human behavior"""
+    delay = random.uniform(1, 3)
+    logging.info(f"⏱ Waiting {delay:.1f} seconds...")
+    time.sleep(delay)
+
+# Initialize IP rotator
+ip_rotator = EthicalHackingRotator()
+
+# Setup Tor if not already running
+if not ip_rotator.setup_tor():
+    logging.error("❌ Failed to setup Tor, continuing without IP rotation")
+
 # --- Browser Setup ---
-def log(message):
-    """Write log messages to stderr so they don't interfere with CSV output"""
-    print(message, file=sys.stderr)
+options = ip_rotator.setup_browser_with_tor()
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+wait = WebDriverWait(driver, 20)
 
-def setup_chrome_options():
-    """Setup Chrome options optimized for server environment"""
-    options = Options()
-    
-    # Basic headless mode
-    options.add_argument("--headless")
-    
-    # Server-specific options to avoid conflicts
-    options.add_argument("--no-sandbox")  # Required for root user
-    options.add_argument("--disable-dev-shm-usage")  # Overcome limited resource problems
-    options.add_argument("--disable-gpu")  # Disable GPU hardware acceleration
-    options.add_argument("--disable-extensions")  # Disable extensions
-    options.add_argument("--disable-plugins")  # Disable plugins
-    options.add_argument("--disable-images")  # Disable images for faster loading
-    
-    # Unique user data directory to avoid conflicts
-    import tempfile
-    temp_dir = tempfile.mkdtemp(prefix="chrome_")
-    options.add_argument(f"--user-data-dir={temp_dir}")
-    options.add_argument(f"--data-path={temp_dir}")
-    options.add_argument(f"--homedir={temp_dir}")
-    
-    # Memory and performance optimizations
-    options.add_argument("--memory-pressure-off")
-    options.add_argument("--max_old_space_size=4096")
-    options.add_argument("--disable-background-timer-throttling")
-    options.add_argument("--disable-backgrounding-occluded-windows")
-    options.add_argument("--disable-renderer-backgrounding")
-    
-    # Download preferences
-    prefs = {"download.default_directory": DOWNLOAD_DIR}
-    options.add_experimental_option("prefs", prefs)
-    
-    return options, temp_dir
-
-# Setup Chrome options and driver
-options, temp_dir = setup_chrome_options()
-log(f"Using temporary Chrome directory: {temp_dir}")
+# Remove webdriver property
+driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
 try:
-    if WEBDRIVER_MANAGER_AVAILABLE:
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-        log("Chrome driver initialized with webdriver-manager")
-    else:
-        driver = webdriver.Chrome(options=options)
-        log("Chrome driver initialized with system ChromeDriver")
-except Exception as e:
-    log(f"Error initializing Chrome driver with primary method: {e}")
-    # Try fallback to system ChromeDriver
-    try:
-        driver = webdriver.Chrome(options=options)
-        log("Chrome driver initialized with system ChromeDriver fallback")
-    except Exception as e2:
-        log(f"Both ChromeDriver methods failed:")
-        log(f"  Primary: {e}")
-        log(f"  Fallback: {e2}")
-        raise Exception("ChromeDriver initialization failed")
-
-try:
+    # Rotate IP before starting
+    logging.info("🔄 Rotating IP before starting...")
+    ip_rotator.rotate_ip()
+    
     # Login
+    logging.info("=== STARTING ETHICAL HACKING PROCESS ===")
+    logging.info(f"Navigating to login page: {LOGIN_URL}")
     driver.get(LOGIN_URL)
-    time.sleep(2)  # Wait for page to load
+    add_random_delays()
+    logging.info("✓ Login page loaded successfully")
     
-    log("Filling in login form...")
-    driver.find_element(By.NAME, "username").send_keys(USERNAME)
-    driver.find_element(By.NAME, "password").send_keys(PASSWORD)
-    driver.find_element(By.XPATH, "//input[@type='submit']").click()
-    log("Login form submitted")
-    time.sleep(3)  # Wait for login to complete
-
-    # Navigate to CSV Upload
+    logging.info("=== FILLING LOGIN FORM ===")
+    logging.info(f"Looking for username field...")
+    username_field = wait.until(EC.presence_of_element_located((By.NAME, "username")))
+    logging.info("✓ Username field found")
+    username_field.send_keys(USERNAME)
+    add_random_delays()
+    logging.info(f"✓ Username entered: {USERNAME}")
+    
+    logging.info(f"Looking for password field...")
+    password_field = wait.until(EC.presence_of_element_located((By.NAME, "password")))
+    logging.info("✓ Password field found")
+    password_field.send_keys(PASSWORD)
+    add_random_delays()
+    logging.info("✓ Password entered successfully")
+    
+    logging.info("Looking for submit button...")
+    submit_button = driver.find_element(By.XPATH, "//input[@type='submit']")
+    logging.info("✓ Submit button found")
+    submit_button.click()
+    logging.info("✓ Login form submitted")
+    
+    add_random_delays()
+    logging.info("=== LOGIN PROCESS COMPLETED ===")
+    
+    # Verify login success
+    current_url = driver.current_url
+    logging.info(f"Current URL after login: {current_url}")
+    
+    try:
+        logout_link = driver.find_element(By.XPATH, "//a[contains(@href, 'logout')]")
+        logging.info("✓ Login successful - Logout link found")
+    except NoSuchElementException:
+        try:
+            user_info = driver.find_element(By.XPATH, "//*[contains(text(), 'Logged in as')]")
+            logging.info("✓ Login successful - User info found")
+        except NoSuchElementException:
+            logging.warning("⚠ Warning: Could not confirm login success, but proceeding...")
+    
+    # Rotate IP before upload
+    logging.info("🔄 Rotating IP before upload...")
+    ip_rotator.rotate_ip()
+    
+    logging.info("=== NAVIGATING TO UPLOAD PAGE ===")
+    logging.info(f"Navigating to upload page: {UPLOAD_URL}")
     driver.get(UPLOAD_URL)
-    time.sleep(2)
-    log("Navigated to CSV upload page")
-
+    add_random_delays()
+    logging.info("✓ Navigated to CSV upload page")
+    
+    # Wait for page to be fully loaded
+    wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+    time.sleep(3)
+    
+    logging.info("✓ Page loaded, looking for form elements...")
+    
+    # Wait for the file input to be present and visible
+    logging.info("=== UPLOAD FORM PROCESS ===")
+    logging.info("Waiting for file input element...")
+    file_input = wait.until(EC.presence_of_element_located((By.NAME, "filename")))
+    logging.info(f"✓ Found file input element: {file_input}")
+    
     # Upload CSV file
-    file_input = driver.find_element(By.NAME, "filename")
     file_input.send_keys(CSV_PATH)
-    log(f"Selected file: {CSV_PATH}")
+    add_random_delays()
+    logging.info(f"✓ Selected file: {CSV_PATH}")
     
     # Check the "Return thousands block data?" checkbox
-    thousands_checkbox = driver.find_element(By.NAME, "thousands")
+    logging.info("Looking for thousands checkbox...")
+    thousands_checkbox = wait.until(EC.presence_of_element_located((By.NAME, "thousands")))
     if not thousands_checkbox.is_selected():
         thousands_checkbox.click()
-        log("Checked 'Return thousands block data' option")
+        logging.info("✓ Checked 'Return thousands block data' option")
+    else:
+        logging.info("✓ Thousands checkbox was already selected")
     
     # Submit the form
-    submit_button = driver.find_element(By.XPATH, "//input[@type='submit' and @value='Upload and Process File...']")
+    logging.info("Looking for submit button...")
+    submit_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//input[@type='submit' and @value='Upload and Process File...']")))
     submit_button.click()
-    log("CSV upload form submitted")
+    logging.info("✓ CSV upload form submitted")
 
     # Wait for processing
+    logging.info("=== PROCESSING FILE ===")
     time.sleep(10)
+    logging.info("✓ Processing completed")
 
     # Find and download resulting CSV
+    logging.info("=== DOWNLOADING RESULTS ===")
     links = driver.find_elements(By.TAG_NAME, "a")
     csv_link = None
     for link in links:
@@ -238,10 +422,10 @@ try:
         if href and href.endswith(".csv"):
             csv_link = href
             break
-    log(f"Found {len(links)} links, looking for CSV download link...")
+    logging.info(f"Found {len(links)} links, looking for CSV download link...")
 
     if csv_link:
-        log(f"Found CSV download link: {csv_link}")
+        logging.info(f"✓ Found CSV download link: {csv_link}")
         
         # Convert selenium cookies to requests format
         cookies = {}
@@ -251,7 +435,7 @@ try:
         resp = requests.get(csv_link, cookies=cookies)
         with open(OUTPUT_FILE, "wb") as f:
             f.write(resp.content)
-        log(f"Downloaded file to: {OUTPUT_FILE}")
+        logging.info(f"✓ Downloaded file to: {OUTPUT_FILE}")
         
         # Read the output file and send to stdout for Node.js to capture
         try:
@@ -259,35 +443,54 @@ try:
                 csv_content = f.read()
                 # Send CSV content to stdout (this is what Node.js will capture)
                 print(csv_content)
-                log(f"CSV content sent to stdout ({len(csv_content)} characters)")
+                logging.info(f"CSV content sent to stdout ({len(csv_content)} characters)")
         except Exception as e:
-            log(f"Error reading output file: {e}")
+            logging.error(f"Error reading output file: {e}")
             # Send error message to stdout so Node.js knows something went wrong
             print(f"ERROR: Could not read output file: {e}")
     else:
-        log("Error: CSV download link not found.")
-        log("Available links:")
-        for i, link in enumerate(links[:10]):  # Show first 10 links for debugging
+        logging.error("❌ Error: CSV download link not found.")
+        logging.info("Available links:")
+        for i, link in enumerate(links[:10]):
             href = link.get_attribute("href")
             text = link.text
-            log(f"  {i+1}: {text} -> {href}")
+            logging.info(f"  {i+1}: {text} -> {href}")
+        
+        # Send error to stdout so Node.js knows something went wrong
+        print("ERROR: CSV download link not found")
+
+except TimeoutException as e:
+    logging.error(f"❌ Timeout error: {e}")
+    logging.info(f"Current URL: {driver.current_url}")
+    logging.info(f"Page title: {driver.title}")
+    logging.info("Page source:")
+    logging.info(driver.page_source[:2000])
+    print(f"ERROR: Timeout error - {e}")
+except NoSuchElementException as e:
+    logging.error(f"❌ Element not found: {e}")
+    logging.info(f"Current URL: {driver.current_url}")
+    logging.info(f"Page title: {driver.title}")
+    logging.info("Page source:")
+    logging.info(driver.page_source[:2000])
+    print(f"ERROR: Element not found - {e}")
+except Exception as e:
+    logging.error(f"❌ Unexpected error: {e}")
+    logging.info(f"Current URL: {driver.current_url}")
+    logging.info(f"Page title: {driver.title}")
+    logging.info("Page source:")
+    logging.info(driver.page_source[:2000])
+    print(f"ERROR: {e}")
 
 finally:
+    logging.info("=== CLEANUP ===")
     try:
         driver.quit()
-        log("Chrome driver closed")
+        logging.info("✓ Browser closed")
     except:
         pass
     
-    # Clean up temporary directory
-    try:
-        import shutil
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        log(f"Cleaned up temporary directory: {temp_dir}")
-    except:
-        pass
-    
-    log("Script execution completed")`;
+    logging.info(f"✓ Total IP rotations: {ip_rotator.rotation_count}")
+    logging.info("Script execution completed")`;
       
       console.log(`✅ Script content loaded (${scriptContent.length} characters)`);
       
