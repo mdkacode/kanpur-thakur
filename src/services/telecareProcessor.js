@@ -128,9 +128,15 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('ethical_hacking.log'),
-        logging.StreamHandler()
+        logging.StreamHandler(sys.stdout)  # Explicitly use sys.stdout for better visibility
     ]
 )
+
+# Also print directly to console for immediate visibility
+print("🚀 Python script starting with enhanced IP rotation...")
+print(f"📅 Started at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+print("=" * 60)
 
 # --- Config ---
 LOGIN_URL = "https://www.telcodata.us/login"
@@ -156,9 +162,11 @@ class TorRotator:
     def start_tor(self):
         """Start Tor service"""
         try:
+            print("🔧 Starting Tor service...")
             # Check if Tor is installed
             result = subprocess.run(['which', 'tor'], capture_output=True, text=True)
             if result.returncode != 0:
+                print("❌ Tor not found. Install with: brew install tor")
                 logging.error("❌ Tor not found. Install with: brew install tor")
                 return False
             
@@ -174,16 +182,19 @@ class TorRotator:
             self.tor_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(3)  # Wait for Tor to start
             
+            print("✓ Tor service started successfully")
             logging.info("✓ Tor service started")
             return True
             
         except Exception as e:
+            print(f"❌ Failed to start Tor: {e}")
             logging.error(f"❌ Failed to start Tor: {e}")
             return False
     
     def rotate_ip(self):
         """Rotate to new IP using Tor"""
         try:
+            print(f"🔄 Rotating Tor IP (Rotation #{self.rotation_count + 1})...")
             # Send NEWNYM signal to Tor control port
             import socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -194,10 +205,12 @@ class TorRotator:
             time.sleep(5)
             
             self.rotation_count += 1
+            print(f"✓ Tor IP rotated successfully (Rotation #{self.rotation_count})")
             logging.info(f"🔄 Tor IP rotated (Rotation #{self.rotation_count})")
             return True
             
         except Exception as e:
+            print(f"❌ Failed to rotate Tor IP: {e}")
             logging.error(f"❌ Failed to rotate Tor IP: {e}")
             return False
     
@@ -337,18 +350,22 @@ class SimpleProxyRotator:
         
         if self.proxy_failed:
             # If proxy failed, try to find a working one
+            print("🔄 Finding working proxy after failure...")
             working_proxy = self.find_working_proxy()
             if working_proxy:
                 self.current_proxy = working_proxy
                 self.proxy_failed = False
+                print(f"✓ Found working proxy: {self.current_proxy}")
                 logging.info(f"🔄 Found working proxy: {self.current_proxy}")
             else:
                 # If no working proxy, try without proxy
                 self.current_proxy = None
+                print("🔄 No working proxies found, trying without proxy")
                 logging.info("🔄 No working proxies found, trying without proxy")
         else:
             # Try a random proxy
             self.current_proxy = random.choice(self.all_proxies)
+            print(f"🔄 Proxy rotated: {old_proxy} → {self.current_proxy} (Rotation #{self.rotation_count + 1})")
             logging.info(f"🔄 Proxy rotated: {old_proxy} → {self.current_proxy} (Rotation #{self.rotation_count})")
         
         self.rotation_count += 1
@@ -427,16 +444,20 @@ def add_random_delays():
 
 # Initialize IP rotator based on chosen method
 if IP_ROTATION_METHOD == "tor":
+    print("🌐 Initializing Tor-based IP rotation...")
     ip_rotator = TorRotator()
     logging.info("🌐 Using Tor-based IP rotation")
     
     # Start Tor service
     if not ip_rotator.start_tor():
+        print("❌ Failed to start Tor, falling back to proxy method")
         logging.error("❌ Failed to start Tor, falling back to proxy method")
         IP_ROTATION_METHOD = "proxy"
         ip_rotator = SimpleProxyRotator()
         ip_rotator.rotate_proxy()
+        print("🔄 Switched to proxy-based IP rotation")
 else:
+    print("🌐 Initializing proxy-based IP rotation...")
     ip_rotator = SimpleProxyRotator()
     ip_rotator.rotate_proxy()
     logging.info("🌐 Using proxy-based IP rotation")
@@ -459,15 +480,19 @@ except Exception as e:
 
 try:
     # Rotate IP before starting
+    print("🔄 Rotating IP before starting...")
     logging.info("🔄 Rotating IP before starting...")
     if IP_ROTATION_METHOD == "tor":
         ip_rotator.rotate_ip()
         current_ip = ip_rotator.get_current_ip()
+        print(f"✓ Current Tor IP: {current_ip}")
         logging.info(f"✓ Current Tor IP: {current_ip}")
     else:
         ip_rotator.rotate_proxy()
+        print(f"✓ Current proxy: {ip_rotator.current_proxy}")
     
     # Re-setup browser with new IP/proxy
+    print("🔧 Re-setting up browser with new IP/proxy...")
     if IP_ROTATION_METHOD == "tor":
         options = ip_rotator.setup_browser_with_tor()
     else:
@@ -476,6 +501,7 @@ try:
     driver.quit()
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     wait = WebDriverWait(driver, 20)
+    print("✓ Browser restarted with new IP/proxy")
     
     # Remove webdriver property again
     try:
@@ -800,6 +826,8 @@ finally:
   // Run a command and return the result
   runCommand(command, args) {
     return new Promise((resolve, reject) => {
+      console.log(`🚀 Executing: ${command} ${args.join(' ')}`);
+      
       const process = spawn(command, args, {
         stdio: ['pipe', 'pipe', 'pipe'],
         cwd: path.dirname(this.scriptPath)
@@ -808,23 +836,45 @@ finally:
       let stdout = '';
       let stderr = '';
 
+      // Display Python script output in real-time
       process.stdout.on('data', (data) => {
-        stdout += data.toString();
+        const output = data.toString();
+        stdout += output;
+        
+        // Display Python logs in real-time with Python prefix
+        const lines = output.split('\n');
+        lines.forEach(line => {
+          if (line.trim()) {
+            console.log(`🐍 ${line}`);
+          }
+        });
       });
 
       process.stderr.on('data', (data) => {
-        stderr += data.toString();
+        const output = data.toString();
+        stderr += output;
+        
+        // Display Python stderr in real-time with Python prefix
+        const lines = output.split('\n');
+        lines.forEach(line => {
+          if (line.trim()) {
+            console.log(`🐍 ❌ ${line}`);
+          }
+        });
       });
 
       process.on('close', (code) => {
         if (code === 0) {
+          console.log(`✅ Python script completed successfully (exit code: ${code})`);
           resolve({ stdout, stderr, code });
         } else {
+          console.error(`❌ Python script failed with exit code: ${code}`);
           reject(new Error(`Process exited with code ${code}: ${stderr}`));
         }
       });
 
       process.on('error', (error) => {
+        console.error(`❌ Failed to start Python process:`, error);
         reject(error);
       });
     });
