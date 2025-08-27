@@ -444,6 +444,27 @@ const DemographicRecords: React.FC = () => {
           filters: getUniqueValues('city'),
           onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.city === value.toString(),
         },
+        {
+          title: 'Timezone',
+          dataIndex: 'timezone_display_name',
+          key: 'timezone',
+          width: 120,
+          render: (text: string, record: DemographicRecord) => {
+            if (!text && !record.abbreviation_standard) {
+              return <span style={{ color: '#999' }}>-</span>;
+            }
+            return (
+              <Tooltip title={`${text || ''} (${record.abbreviation_standard || ''})`}>
+                <Tag color="purple" style={{ fontSize: '11px' }}>
+                  {record.abbreviation_standard || text || '-'}
+                </Tag>
+              </Tooltip>
+            );
+          },
+          ...getColumnSearchProps('timezone_display_name', 'Timezone'),
+          filters: getUniqueValues('timezone_display_name'),
+          onFilter: (value: boolean | React.Key, record: DemographicRecord) => record.timezone_display_name === value.toString(),
+        },
       ],
     },
     {

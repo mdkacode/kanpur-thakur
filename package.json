@@ -18,7 +18,14 @@
     "seed:states": "node src/database/populateUSStates.js",
     "migrate:dedupe": "node src/database/addDedupeKeyMigration.js",
     "create:states-table": "node src/database/createStatesTable.js",
-    "optimize": "node src/database/optimizeForLargeData.js"
+    "optimize": "node src/database/optimizeForLargeData.js",
+    "fix:state-timezones": "node fix_state_timezones.js",
+    "fix:demographic-timezones": "node update_demographic_timezones.js",
+    "fix:all-timezones": "npm run fix:state-timezones && npm run fix:demographic-timezones",
+    "setup:timezones": "node setup_timezones.js",
+    "process:timezones": "node src/scripts/processTimezones.js",
+    "cron:timezones": "node src/scripts/cronTimezoneProcessor.js",
+    "setup:cron": "./setup-cron.sh"
   },
   "keywords": [
     "express",

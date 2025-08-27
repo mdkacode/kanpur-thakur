@@ -37,9 +37,9 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess }) => {
       return;
     }
 
-    // Validate file size (10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      message.error('File size must be less than 10MB');
+    // Validate file size (200MB)
+    if (file.size > 200 * 1024 * 1024) {
+      message.error('File size must be less than 200MB');
       return;
     }
 
@@ -198,7 +198,7 @@ const FileUpload: React.FC<FileUploadProps> = ({ onUploadSuccess }) => {
               fontSize: '14px',
               color: isDarkMode ? '#595959' : '#999999'
             }}>
-              Maximum file size: 10MB
+              Maximum file size: 200MB
             </Text>
           </div>
 

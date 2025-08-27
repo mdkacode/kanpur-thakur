@@ -8,7 +8,7 @@ class DemographicRecord {
   static async getTableColumns() {
     try {
       const query = `
-        SELECT column_name 
+        SELECT column_name, data_type, character_maximum_length
         FROM information_schema.columns 
         WHERE table_name = 'demographic_records' 
         AND column_name NOT IN ('id', 'created_at', 'updated_at')
@@ -19,6 +19,34 @@ class DemographicRecord {
     } catch (error) {
       console.error('Error getting table columns:', error);
       throw error;
+    }
+  }
+
+  // Get column constraints for data validation
+  static async getColumnConstraints() {
+    try {
+      const query = `
+        SELECT column_name, data_type, character_maximum_length, is_nullable
+        FROM information_schema.columns 
+        WHERE table_name = 'demographic_records' 
+        AND column_name NOT IN ('id', 'created_at', 'updated_at')
+        ORDER BY ordinal_position
+      `;
+      const result = await db.query(query);
+      
+      const constraints = {};
+      result.rows.forEach(row => {
+        constraints[row.column_name] = {
+          dataType: row.data_type,
+          maxLength: row.character_maximum_length,
+          nullable: row.is_nullable === 'YES'
+        };
+      });
+      
+      return constraints;
+    } catch (error) {
+      console.error('Error getting column constraints:', error);
+      return {};
     }
   }
 
@@ -49,51 +77,77 @@ class DemographicRecord {
   }
 
   // Dynamic value extractor - maps CSV data to database columns
-  static extractValues(record, columns) {
+  static extractValues(record, columns, constraints = {}) {
     return columns.map(column => {
-      // Handle special cases and data transformations
-      let value = record[column];
-      
-      // If value is undefined or null, return null for all fields
-      if (value === undefined || value === null) {
-        return null;
-      }
-      
-      // Convert to string for processing
-      value = value.toString().trim();
-      
-      // Clean up common data issues
-      if (value === '-1' || value === '') {
-        return null;
-      }
-      
-      // Remove currency symbols and commas from numeric fields
-      if (typeof value === 'string' && (value.includes('$') || value.includes(','))) {
-        value = value.replace(/[$,]/g, '');
-      }
-      
-      // Handle integer columns - convert empty strings to null for integer fields
-      if (['timezone_id', 'population'].includes(column)) {
-        if (value === '' || value === null || value === undefined) {
+      try {
+        // Handle special cases and data transformations
+        let value = record[column];
+        
+        // If value is undefined or null, return null for all fields
+        if (value === undefined || value === null) {
           return null;
         }
-        // Try to convert to integer
-        const numValue = parseInt(value);
-        return isNaN(numValue) ? null : numValue;
-      }
-      
-      // Handle numeric columns - convert empty strings to null
-      if (['median_age', 'median_income'].includes(column)) {
-        if (value === '' || value === null || value === undefined) {
+        
+        // Convert to string for processing
+        value = value.toString().trim();
+        
+        // Clean up common data issues
+        if (value === '-1' || value === '') {
           return null;
         }
-        // Try to convert to numeric
-        const numValue = parseFloat(value);
-        return isNaN(numValue) ? null : numValue;
+        
+        // Remove currency symbols and commas from numeric fields
+        if (typeof value === 'string' && (value.includes('$') || value.includes(','))) {
+          value = value.replace(/[$,]/g, '');
+        }
+        
+        // Handle integer columns - convert empty strings to null for integer fields
+        if (['timezone_id', 'population'].includes(column)) {
+          if (value === '' || value === null || value === undefined) {
+            return null;
+          }
+          // Try to convert to integer
+          const numValue = parseInt(value);
+          return isNaN(numValue) ? null : numValue;
+        }
+        
+        // Handle numeric columns - convert empty strings to null
+        if (['median_age', 'median_income'].includes(column)) {
+          if (value === '' || value === null || value === undefined) {
+            return null;
+          }
+          // Try to convert to numeric
+          const numValue = parseFloat(value);
+          return isNaN(numValue) ? null : numValue;
+        }
+        
+        // For string fields, truncate based on actual column constraints
+        if (typeof value === 'string' && constraints[column] && constraints[column].maxLength) {
+          const maxLength = constraints[column].maxLength;
+          if (value.length > maxLength) {
+            console.warn(`⚠️ Truncating value for column ${column}: "${value.substring(0, 50)}..." (length: ${value.length} -> ${maxLength})`);
+            value = value.substring(0, maxLength);
+          }
+        } else if (typeof value === 'string' && value.length > 100) {
+          // Fallback truncation for unknown columns
+          console.warn(`⚠️ Truncating value for column ${column}: "${value.substring(0, 50)}..." (length: ${value.length} -> 100)`);
+          value = value.substring(0, 100);
+        }
+        
+        // For all other fields, return null if empty, otherwise return the value
+        const result = value === '' ? null : value;
+        
+        // Ensure we never return undefined
+        if (result === undefined) {
+          console.error(`❌ extractValues returned undefined for column: ${column}, value: ${value}`);
+          return null;
+        }
+        
+        return result;
+      } catch (error) {
+        console.error(`❌ Error processing column ${column}:`, error);
+        return null;
       }
-      
-      // For all other fields, return null if empty, otherwise return the value
-      return value === '' ? null : value;
     });
   }
 
@@ -114,17 +168,108 @@ class DemographicRecord {
 
   // Dynamic bulk record creation
   static async bulkCreate(records) {
-    if (records.length === 0) return [];
+    if (!Array.isArray(records) || records.length === 0) {
+      console.log('🔍 bulkCreate called with empty or invalid records array');
+      return [];
+    }
     
     try {
+      console.log(`🔍 bulkCreate called with ${records.length} records`);
+      
+      // Validate that all records are objects
+      const validRecords = records.filter(record => record && typeof record === 'object');
+      if (validRecords.length !== records.length) {
+        console.error(`❌ Invalid records found: ${records.length - validRecords.length} records are not objects`);
+        console.error(`❌ Records array:`, records);
+        throw new Error(`Invalid records: ${records.length - validRecords.length} records are not objects`);
+      }
+      
+      // Check if any records are empty objects
+      const emptyRecords = validRecords.filter(record => Object.keys(record).length === 0);
+      if (emptyRecords.length > 0) {
+        console.error(`❌ Found ${emptyRecords.length} empty records`);
+        throw new Error(`Found ${emptyRecords.length} empty records`);
+      }
+      
+      console.log(`🔍 First record keys:`, Object.keys(records[0] || {}));
+      
       const columns = await this.getTableColumns();
+      console.log(`🔍 Database columns count: ${columns.length}`);
+      
+      // Get column constraints for data validation
+      const constraints = await this.getColumnConstraints();
+      console.log(`🔍 Loaded constraints for ${Object.keys(constraints).length} columns`);
+      
       const query = await this.buildBulkInsertQuery(columns, records.length);
+      console.log(`🔍 Query generated with ${columns.length * records.length} placeholders`);
       
       // Flatten all values for bulk insert
-      const values = records.flatMap(record => this.extractValues(record, columns));
+      console.log(`🔍 Starting flatMap operation with ${records.length} records`);
       
-      const result = await db.query(query, values);
-      return result.rows;
+      const values = [];
+      for (let i = 0; i < records.length; i++) {
+        const record = records[i];
+        console.log(`🔍 Processing record ${i + 1}/${records.length}:`, Object.keys(record));
+        
+        const recordValues = this.extractValues(record, columns, constraints);
+        console.log(`🔍 Record ${i + 1} values type: ${typeof recordValues}, length: ${recordValues ? recordValues.length : 'undefined'}`);
+        
+        if (!Array.isArray(recordValues)) {
+          console.error(`❌ Record ${i + 1} extractValues did not return an array:`, recordValues);
+          throw new Error(`Record ${i + 1} extractValues did not return an array`);
+        }
+        
+        if (recordValues.length !== columns.length) {
+          console.error(`❌ Record ${i + 1} has wrong number of values: ${recordValues.length} vs ${columns.length}`);
+          throw new Error(`Record ${i + 1} has wrong number of values: ${recordValues.length} vs ${columns.length}`);
+        }
+        
+        values.push(...recordValues);
+      }
+      
+      console.log(`🔍 Final values array length: ${values.length}`);
+      console.log(`🔍 Expected length: ${columns.length * records.length}`);
+      
+      if (values.length !== columns.length * records.length) {
+        console.error(`❌ Length mismatch! Expected ${columns.length * records.length}, got ${values.length}`);
+        console.error(`❌ Records count: ${records.length}, Columns count: ${columns.length}`);
+        throw new Error(`Parameter count mismatch: expected ${columns.length * records.length}, got ${values.length}`);
+      }
+      
+      // Check for any undefined values in the array
+      const undefinedCount = values.filter(v => v === undefined).length;
+      if (undefinedCount > 0) {
+        console.error(`❌ Found ${undefinedCount} undefined values in the values array`);
+        throw new Error(`Found ${undefinedCount} undefined values in the values array`);
+      }
+      
+      try {
+        const result = await db.query(query, values);
+        console.log(`✅ bulkCreate completed successfully`);
+        return result.rows;
+      } catch (error) {
+        // If it's a data length error, try to identify and fix the problematic values
+        if (error.code === '22001' && error.message.includes('too long for type character varying')) {
+          console.warn(`⚠️ Data length error detected. Attempting to fix and retry...`);
+          
+          // Try to identify which values are too long and truncate them
+          const fixedValues = values.map((value, index) => {
+            if (typeof value === 'string' && value.length > 100) {
+              console.warn(`⚠️ Truncating value at index ${index}: "${value.substring(0, 50)}..." (length: ${value.length})`);
+              return value.substring(0, 100);
+            }
+            return value;
+          });
+          
+          // Retry with fixed values
+          const result = await db.query(query, fixedValues);
+          console.log(`✅ bulkCreate completed successfully after fixing data length issues`);
+          return result.rows;
+        }
+        
+        // For other errors, re-throw
+        throw error;
+      }
     } catch (error) {
       console.error('Error bulk creating demographic records:', error);
       throw error;
@@ -559,6 +704,46 @@ class DemographicRecord {
       
       const columns = await this.getTableColumns();
       console.log('🔍 Available columns:', columns);
+      
+      // Special handling for timezone fields
+      if (field === 'timezone_display_name' || field === 'timezone') {
+        console.log('🔍 Processing timezone field with JOIN query');
+        
+        let query;
+        let params = [];
+        
+        if (search && search.trim()) {
+          query = `
+            SELECT DISTINCT tz.display_name as timezone_display_name, tz.abbreviation_standard
+            FROM demographic_records dr
+            LEFT JOIN timezones tz ON dr.timezone_id = tz.id
+            WHERE tz.display_name IS NOT NULL 
+            AND tz.display_name ILIKE $1
+            ORDER BY tz.display_name
+            LIMIT $2
+          `;
+          params = [`%${search.trim()}%`, limit];
+        } else {
+          query = `
+            SELECT DISTINCT tz.display_name as timezone_display_name, tz.abbreviation_standard
+            FROM demographic_records dr
+            LEFT JOIN timezones tz ON dr.timezone_id = tz.id
+            WHERE tz.display_name IS NOT NULL 
+            ORDER BY tz.display_name
+            LIMIT $1
+          `;
+          params = [limit];
+        }
+        
+        console.log('🔍 Executing timezone query:', query);
+        const result = await db.query(query, params);
+        console.log('🔍 Timezone query result rows:', result.rows.length);
+        
+        const timezoneValues = result.rows.map(row => row.timezone_display_name).filter(value => value !== null && value !== '');
+        console.log('🔍 Timezone values:', timezoneValues);
+        
+        return timezoneValues;
+      }
       
       if (!columns.includes(field)) {
         console.log('❌ Field not found in columns:', field);
