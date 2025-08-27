@@ -104,8 +104,35 @@ class TelecareProcessor {
       
       await fs.writeFile(tempInputPath, inputCsvPath);
       
+      // Check if script file exists with fallback paths
+      let scriptContent = null;
+      const possiblePaths = [
+        this.scriptPath,
+        path.join(process.cwd(), 'scrap.py'),
+        path.join(__dirname, '..', '..', 'scrap.py'),
+        './scrap.py'
+      ];
+      
+      for (const scriptPath of possiblePaths) {
+        try {
+          await fs.access(scriptPath);
+          console.log(`✅ Script file found: ${scriptPath}`);
+          scriptContent = await fs.readFile(scriptPath, 'utf8');
+          break;
+        } catch (error) {
+          console.log(`❌ Script not found at: ${scriptPath}`);
+        }
+      }
+      
+      if (!scriptContent) {
+        throw new Error(`Script file not found. Tried paths: ${possiblePaths.join(', ')}. Please ensure scrap.py exists in the project root.`);
+      }
+      
       // Modify the script to use our input file and output file
-      const scriptContent = await fs.readFile(this.scriptPath, 'utf8');
+      if (!scriptContent) {
+        throw new Error(`Failed to read script file`);
+      }
+      
       const modifiedScript = scriptContent
         .replace('CSV_PATH = os.path.join(os.getcwd(), "sample_input.csv")', `CSV_PATH = "${tempInputPath.replace(/\\/g, '/')}"`)
         .replace('OUTPUT_FILE = os.path.join(DOWNLOAD_DIR, "telcodata_bulk_output.csv")', `OUTPUT_FILE = "${outputFilePath.replace(/\\/g, '/')}"`);
