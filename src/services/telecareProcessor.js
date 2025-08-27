@@ -296,6 +296,9 @@ finally:
         throw new Error(`Failed to read script file - scriptContent is null`);
       }
       
+      // Set output file path before using it
+      outputFilePath = path.join(__dirname, '..', '..', `temp_output_${tempPrefix}.csv`);
+      
       console.log(`🔧 Modifying script content...`);
       console.log(`   Input path: ${tempInputPath}`);
       console.log(`   Output path: ${outputFilePath}`);
@@ -317,7 +320,6 @@ finally:
       await fs.writeFile(tempScriptPath, modifiedScript);
 
       // Run the Python script
-      outputFilePath = path.join(__dirname, '..', '..', `temp_output_${tempPrefix}.csv`);
       const result = await this.runCommand(this.pythonPath, [tempScriptPath]);
       
       return { ...result, outputFilePath };
