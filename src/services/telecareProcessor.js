@@ -1153,17 +1153,81 @@ finally:
         
         const outputRows = await this.parseOutputCSV(outputContent);
         
+        // Process the output rows to handle null THOUSANDS values
+        console.log(`📊 Processing ${outputRows.length} output rows...`);
+        const processedRows = [];
+        
+        for (const row of outputRows) {
+          // Extract fields with proper fallbacks
+          const npa = row.NPA || row.npa || '';
+          const nxx = row.NXX || row.nxx || '';
+          const thousands = row.THOUSANDS || row.thousands || '';
+          const state = row.STATE || row.state || '';
+          const city = row.CITY || row.city || '';
+          const county = row.COUNTY || row.county || row.RATECENTER || row.ratecenter || '';
+          
+          // Skip rows without NPA or NXX
+          if (!npa || !nxx) {
+            console.log(`⚠️ Skipping row without NPA or NXX: NPA=${npa}, NXX=${nxx}`);
+            continue;
+          }
+          
+          // Handle null/empty THOUSANDS by generating for all thousands digits (0-9)
+          if (!thousands || thousands === '' || thousands === 'null' || thousands === 'NULL') {
+            console.log(`📱 Processing NPA-NXX ${npa}-${nxx} with null THOUSANDS - will generate for all thousands digits (0-9)`);
+            
+            // Generate entries for all thousands digits (0-9)
+            for (let thousandsDigit = 0; thousandsDigit <= 9; thousandsDigit++) {
+              processedRows.push({
+                NPA: npa,
+                NXX: nxx,
+                THOUSANDS: thousandsDigit.toString(),
+                STATE: state,
+                CITY: city,
+                COUNTY: county,
+                'COMPANY TYPE': 'STANDARD',
+                OCN: '',
+                COMPANY: '',
+                LATA: '',
+                RATECENTER: county,
+                CLLI: ''
+              });
+            }
+          } else {
+            // THOUSANDS has a valid value, use as-is
+            processedRows.push({
+              NPA: npa,
+              NXX: nxx,
+              THOUSANDS: thousands,
+              STATE: state,
+              CITY: city,
+              COUNTY: county,
+              'COMPANY TYPE': 'STANDARD',
+              OCN: '',
+              COMPANY: '',
+              LATA: '',
+              RATECENTER: county,
+              CLLI: ''
+            });
+          }
+        }
+        
+        console.log(`✅ Processed ${outputRows.length} original rows into ${processedRows.length} phone-generatable rows`);
+        
+        // Replace outputRows with processedRows
+        const finalOutputRows = processedRows;
+        
         // Store output CSV file
         console.log('Storing output CSV file...');
         const outputFileResult = await fileStorageService.storeOutputFile(zipcode, run.id, outputContent, outputCsvName);
         
         // Save output rows to database
         console.log('Saving output rows to database...');
-        await Telecare.saveOutputRows(run.id, zipcode, outputRows);
+        await Telecare.saveOutputRows(run.id, zipcode, finalOutputRows);
         
         // Update run status to success
         await Telecare.updateRunStatus(run.id, 'success', {
-          row_count: outputRows.length,
+          row_count: finalOutputRows.length,
           finished_at: new Date(),
           file_refs: {
             inputPath: inputFileResult.success ? inputFileResult.relativePath : inputCsvName,
@@ -1180,9 +1244,9 @@ finally:
           run_id: run.id,
           input_csv: inputCsv,
           input_filename: inputCsvName,
-          output_rows: outputRows,
+          output_rows: finalOutputRows,
           output_filename: outputCsvName,
-          row_count: outputRows.length
+          row_count: finalOutputRows.length
         };
         
       } catch (error) {

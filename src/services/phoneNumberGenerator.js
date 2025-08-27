@@ -476,11 +476,94 @@ class PhoneNumberGenerator {
       await PhoneNumber.updateJobStatus(job.id, 'processing');
 
       // Get NPA NXX records for this zipcode with optional filter criteria
-      const Record = require('../models/Record');
-      let npaNxxRecords = await Record.findByZip(zip);
+      // First try to get processed telecare output data (which has valid THOUSANDS values)
+      const Telecare = require('../models/Telecare');
+      let npaNxxRecords = [];
       
-      if (!npaNxxRecords || npaNxxRecords.length === 0) {
-        throw new Error(`No NPA NXX records found for zipcode ${zip}`);
+      try {
+        // Get the latest telecare run for this zipcode
+        const latestRun = await Telecare.getLatestRunByZip(zip);
+        if (latestRun && latestRun.status === 'success') {
+          // Get the processed output rows from telecare
+          const telecareOutputRows = await Telecare.getOutputRowsByRunId(latestRun.id);
+          if (telecareOutputRows && telecareOutputRows.length > 0) {
+            console.log(`✅ Found ${telecareOutputRows.length} processed telecare output rows with valid THOUSANDS values`);
+            npaNxxRecords = telecareOutputRows.map(row => ({
+              npa: row.npa,
+              nxx: row.nxx,
+              thousands: row.thousands,
+              state_code: row.state_code,
+              city: row.city,
+              county: row.county,
+              timezone_id: row.timezone_id
+            }));
+          }
+        }
+      } catch (telecareError) {
+        console.log(`⚠️ Could not get telecare output data: ${telecareError.message}`);
+      }
+      
+      // Fallback to Record model if no telecare data
+      if (npaNxxRecords.length === 0) {
+        console.log(`🔄 Falling back to Record model for NPA-NXX data...`);
+        const Record = require('../models/Record');
+        npaNxxRecords = await Record.findByZip(zip);
+        
+        if (!npaNxxRecords || npaNxxRecords.length === 0) {
+          throw new Error(`No NPA NXX records found for zipcode ${zip}`);
+        }
+        
+        // Process Record data to handle null THOUSANDS (similar to telecareProcessor logic)
+        console.log(`📊 Processing ${npaNxxRecords.length} Record model rows to handle null THOUSANDS...`);
+        const processedRecords = [];
+        
+        for (const record of npaNxxRecords) {
+          const npa = record.npa || record.NPA || '';
+          const nxx = record.nxx || record.NXX || '';
+          const thousands = record.thousands || record.THOUSANDS || '';
+          const state = record.state_code || record.state || '';
+          const city = record.city || '';
+          const county = record.county || '';
+          const timezone = record.timezone_id || record.timezone || null;
+          
+          // Skip records without NPA or NXX
+          if (!npa || !nxx) {
+            console.log(`⚠️ Skipping record without NPA or NXX: NPA=${npa}, NXX=${nxx}`);
+            continue;
+          }
+          
+          // Handle null/empty THOUSANDS by generating for all thousands digits (0-9)
+          if (!thousands || thousands === '' || thousands === 'null' || thousands === 'NULL') {
+            console.log(`📱 Processing NPA-NXX ${npa}-${nxx} with null THOUSANDS - will generate for all thousands digits (0-9)`);
+            
+            // Generate entries for all thousands digits (0-9)
+            for (let thousandsDigit = 0; thousandsDigit <= 9; thousandsDigit++) {
+              processedRecords.push({
+                npa,
+                nxx,
+                thousands: thousandsDigit.toString(),
+                state_code: state,
+                city,
+                county,
+                timezone_id: timezone
+              });
+            }
+          } else {
+            // THOUSANDS has a valid value, use as-is
+            processedRecords.push({
+              npa,
+              nxx,
+              thousands,
+              state_code: state,
+              city,
+              county,
+              timezone_id: timezone
+            });
+          }
+        }
+        
+        npaNxxRecords = processedRecords;
+        console.log(`✅ Processed Record model data: ${processedRecords.length} phone-generatable records`);
       }
 
       // Apply filter criteria if provided
@@ -537,7 +620,7 @@ class PhoneNumberGenerator {
 
       // Update job with total count
       await PhoneNumber.updateJobStatus(job.id, 'processing', {
-        totalNumbers: npaNxxRecords.length * 10000 // Each NPA-NXX generates 10,000 numbers (10 thousands digits × 1000 each)
+        totalNumbers: npaNxxRecords.length * 1000 // Each NPA-NXX-THOUSANDS generates 1,000 numbers (000-999)
       });
 
       let totalGenerated = 0;
@@ -552,13 +635,13 @@ class PhoneNumberGenerator {
           const nxx = record.nxx;
           const state = record.state_code;
           const city = record.city;
-          const ratecenter = record.rc;
+          const ratecenter = record.county || record.rc;
 
           // For direct NPA NXX generation, we need to check if this NPA-NXX combination
           // should actually generate phone numbers based on source data
           if (!npa || !nxx || !state) {
             console.warn(`⚠️ Skipping record with missing required fields:`, record);
-            totalFailed += 10000; // Each NPA-NXX generates 10,000 numbers (10 thousands digits × 1000 each)
+            totalFailed += 1000; // Each NPA-NXX-THOUSANDS generates 1,000 numbers (000-999)
             continue;
           }
 
@@ -568,14 +651,14 @@ class PhoneNumberGenerator {
           
           if (!npaValidation || !nxxValidation) {
             console.warn(`⚠️ Skipping record with invalid NPA/NXX format: NPA=${npa} (valid: ${npaValidation}), NXX=${nxx} (valid: ${nxxValidation})`, record);
-            totalFailed += 10000;
+            totalFailed += 1000;
             continue;
           }
 
           // Skip records with THOUSANDS = "-" (don't generate phone numbers for invalid data)
           if (record.thousands === '-') {
             console.warn(`⚠️ Skipping NPA-NXX ${npa}-${nxx} because THOUSANDS is "-" (no phone numbers generated)`);
-            totalFailed += 10000;
+            totalFailed += 1000;
             continue;
           }
 
@@ -614,7 +697,7 @@ class PhoneNumberGenerator {
 
         } catch (error) {
           console.error(`❌ Error processing NPA NXX record:`, error);
-          totalFailed += 10000; // Each NPA-NXX should generate 10,000 numbers
+          totalFailed += 1000; // Each NPA-NXX-THOUSANDS should generate 1,000 numbers
         }
       }
 
