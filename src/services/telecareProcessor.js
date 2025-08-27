@@ -104,57 +104,9 @@ class TelecareProcessor {
       
       await fs.writeFile(tempInputPath, inputCsvPath);
       
-      // Check if script file exists with fallback paths
-      let scriptContent = null;
-      const possiblePaths = [
-        this.scriptPath,
-        path.join(process.cwd(), 'scrap.py'),
-        path.join(__dirname, '..', '..', 'scrap.py'),
-        './scrap.py',
-        '/root/kanpur-thakur/scrap.py',  // Server-specific path
-        path.join(process.cwd(), 'src', '..', 'scrap.py'),
-        path.join(__dirname, '..', '..', '..', 'scrap.py')
-      ];
-      
-      console.log('🔍 Searching for scrap.py file...');
-      console.log(`Current working directory: ${process.cwd()}`);
-      console.log(`__dirname: ${__dirname}`);
-      
-      for (const scriptPath of possiblePaths) {
-        try {
-          await fs.access(scriptPath);
-          console.log(`✅ Script file found: ${scriptPath}`);
-          scriptContent = await fs.readFile(scriptPath, 'utf8');
-          console.log(`✅ Script content loaded (${scriptContent.length} characters)`);
-          
-          // Verify content contains expected strings
-          const hasCSVPath = scriptContent.includes('CSV_PATH = os.path.join(os.getcwd(), "sample_input.csv")');
-          const hasOutputFile = scriptContent.includes('OUTPUT_FILE = os.path.join(DOWNLOAD_DIR, "telcodata_bulk_output.csv")');
-          
-          if (!hasCSVPath || !hasOutputFile) {
-            console.log(`⚠️ Warning: Script content may be incomplete or corrupted`);
-            console.log(`   Has CSV_PATH: ${hasCSVPath}`);
-            console.log(`   Has OUTPUT_FILE: ${hasOutputFile}`);
-          }
-          
-          break;
-        } catch (error) {
-          console.log(`❌ Script not found at: ${scriptPath} - ${error.message}`);
-        }
-      }
-      
-      if (!scriptContent) {
-        console.error('❌ All script paths failed. Available files in current directory:');
-        try {
-          const files = await fs.readdir(process.cwd());
-          console.error('Files in current directory:', files.filter(f => f.endsWith('.py')));
-        } catch (dirError) {
-          console.error('Could not read current directory:', dirError.message);
-        }
-        
-        // Create scrap.py if it doesn't exist
-        console.log('🔧 Creating scrap.py file...');
-        const defaultScriptContent = `import time
+      // Use hardcoded script content to avoid file reading issues
+      console.log('🔧 Using hardcoded script content...');
+      const scriptContent = `import time
 import os
 import requests
 import sys
@@ -336,17 +288,8 @@ finally:
         pass
     
     log("Script execution completed")`;
-        
-        try {
-          const scriptPath = path.join(process.cwd(), 'scrap.py');
-          await fs.writeFile(scriptPath, defaultScriptContent);
-          console.log(`✅ Created scrap.py at: ${scriptPath}`);
-          scriptContent = defaultScriptContent;
-        } catch (createError) {
-          console.error(`❌ Failed to create scrap.py: ${createError.message}`);
-          throw new Error(`Script file not found and could not be created. Tried paths: ${possiblePaths.join(', ')}. Please ensure scrap.py exists in the project root.`);
-        }
-      }
+      
+      console.log(`✅ Script content loaded (${scriptContent.length} characters)`);
       
       // Modify the script to use our input file and output file
       if (!scriptContent) {
@@ -356,6 +299,14 @@ finally:
       console.log(`🔧 Modifying script content...`);
       console.log(`   Input path: ${tempInputPath}`);
       console.log(`   Output path: ${outputFilePath}`);
+      console.log(`   Script content type: ${typeof scriptContent}`);
+      console.log(`   Script content length: ${scriptContent ? scriptContent.length : 'null'}`);
+      
+      // Final safety check
+      if (!scriptContent || typeof scriptContent !== 'string') {
+        console.error('❌ Script content is invalid:', scriptContent);
+        throw new Error(`Script content is invalid. Type: ${typeof scriptContent}, Value: ${scriptContent}`);
+      }
       
       const modifiedScript = scriptContent
         .replace('CSV_PATH = os.path.join(os.getcwd(), "sample_input.csv")', `CSV_PATH = "${tempInputPath.replace(/\\/g, '/')}"`)
