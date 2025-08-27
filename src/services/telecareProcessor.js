@@ -104,14 +104,14 @@ class TelecareProcessor {
       
       await fs.writeFile(tempInputPath, inputCsvPath);
       
-      // Use enhanced script content with Tor functionality and better error handling
-      console.log('🔧 Using enhanced script content with Tor IP rotation...');
+      // Use enhanced script content with improved IP rotation methods and better logging
+      console.log('🔧 Using enhanced script content with improved IP rotation...');
       const scriptContent = `import time
 import os
 import requests
 import random
-import subprocess
 import logging
+import subprocess
 import sys
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -141,134 +141,74 @@ CSV_PATH = os.path.join(os.getcwd(), "sample_input.csv")
 DOWNLOAD_DIR = os.getcwd()
 OUTPUT_FILE = os.path.join(DOWNLOAD_DIR, "telcodata_bulk_output.csv")
 
-class EthicalHackingRotator:
-    """IP rotation for ethical hacking and scam protection"""
+# Choose your IP rotation method: "proxy" or "tor"
+IP_ROTATION_METHOD = "tor"  # Change this to "proxy" if you prefer
+
+class TorRotator:
+    """Tor-based IP rotation - most reliable and free"""
     
     def __init__(self):
-        self.tor_control_port = 9051
-        self.tor_password = "1234"  # Change this!
-        self.current_ip = None
         self.rotation_count = 0
+        self.tor_process = None
+        self.tor_control_port = 9051
+        self.tor_socks_port = 9050
         
-    def setup_tor(self):
-        """Setup Tor for IP rotation"""
+    def start_tor(self):
+        """Start Tor service"""
         try:
-            # Install Tor if not present
-            subprocess.run(["sudo", "apt-get", "update"], check=True)
-            subprocess.run(["sudo", "apt-get", "install", "-y", "tor"], check=True)
+            # Check if Tor is installed
+            result = subprocess.run(['which', 'tor'], capture_output=True, text=True)
+            if result.returncode != 0:
+                logging.error("❌ Tor not found. Install with: brew install tor")
+                return False
             
-            # Configure Tor
-            self.configure_tor()
+            # Start Tor in background
+            cmd = [
+                'tor', 
+                '--SocksPort', str(self.tor_socks_port),
+                '--ControlPort', str(self.tor_control_port),
+                '--DataDirectory', '/tmp/tor_data',
+                '--RunAsDaemon', '1'
+            ]
             
-            # Start Tor service
-            subprocess.run(["sudo", "systemctl", "start", "tor"], check=True)
-            subprocess.run(["sudo", "systemctl", "enable", "tor"], check=True)
+            self.tor_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(3)  # Wait for Tor to start
             
-            logging.info("✓ Tor setup complete")
+            logging.info("✓ Tor service started")
             return True
+            
         except Exception as e:
-            logging.error(f"❌ Tor setup failed: {e}")
+            logging.error(f"❌ Failed to start Tor: {e}")
             return False
-    
-    def configure_tor(self):
-        """Configure Tor for optimal performance"""
-        torrc_content = f"""
-# Ethical hacking Tor configuration
-SocksPort 9050
-ControlPort 9051
-CookieAuthentication 1
-HashedControlPassword {self.generate_tor_password_hash()}
-
-# Performance settings
-MaxCircuitDirtiness 300
-NewCircuitPeriod 90
-CircuitBuildTimeout 30
-
-# Security settings
-SafeLogging 1
-Log notice file /var/log/tor/notices.log
-
-# Exit nodes for IP diversity
-ExitNodes {{{{US}}}} {{{{CA}}}} {{{{GB}}}} {{{{DE}}}} {{{{NL}}}}
-StrictExitNodes 1
-"""
-        
-        with open('/etc/tor/torrc', 'w') as f:
-            f.write(torrc_content)
-        
-        # Restart Tor service
-        subprocess.run(["sudo", "systemctl", "restart", "tor"], check=True)
-    
-    def generate_tor_password_hash(self):
-        """Generate Tor password hash"""
-        try:
-            result = subprocess.run(["tor", "--hash-password", self.tor_password], 
-                                  capture_output=True, text=True)
-            return result.stdout.strip()
-        except:
-            return "16:XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
     
     def rotate_ip(self):
-        """Rotate IP using Tor"""
+        """Rotate to new IP using Tor"""
         try:
+            # Send NEWNYM signal to Tor control port
             import socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.connect(('127.0.0.1', self.tor_control_port))
-            
-            # Authenticate
-            sock.send(f'AUTHENTICATE "{self.tor_password}"\\r\\n'.encode())
-            response = sock.recv(1024).decode()
-            
-            if '250 OK' not in response:
-                logging.error(f"❌ Tor authentication failed: {response}")
-                return False
-            
-            # Request new circuit
-            sock.send('SIGNAL NEWNYM\\r\\n'.encode())
-            response = sock.recv(1024).decode()
-            
-            if '250 OK' in response:
-                self.rotation_count += 1
-                logging.info(f"✓ IP rotated (Rotation #{self.rotation_count})")
-                
-                # Wait for circuit to establish
-                time.sleep(random.uniform(3, 7))
-                
-                # Get new IP
-                new_ip = self.get_current_ip()
-                if new_ip:
-                    self.current_ip = new_ip
-                    logging.info(f"✓ New IP: {new_ip}")
-                
-                return True
-            else:
-                logging.error(f"❌ IP rotation failed: {response}")
-                return False
-                
-        except Exception as e:
-            logging.error(f"❌ IP rotation error: {e}")
-            return False
-        finally:
+            sock.connect(('127.0.0.1', self.tor_socks_port))
             sock.close()
-    
-    def get_current_ip(self):
-        """Get current IP through Tor"""
-        try:
-            proxies = {
-                'http': 'socks5://127.0.0.1:9050',
-                'https': 'socks5://127.0.0.1:9050'
-            }
-            response = requests.get('http://httpbin.org/ip', proxies=proxies, timeout=15)
-            ip_data = response.json()
-            return ip_data['origin']
+            
+            # Wait for new circuit
+            time.sleep(5)
+            
+            self.rotation_count += 1
+            logging.info(f"🔄 Tor IP rotated (Rotation #{self.rotation_count})")
+            return True
+            
         except Exception as e:
-            logging.error(f"❌ Could not get IP: {e}")
-            return None
+            logging.error(f"❌ Failed to rotate Tor IP: {e}")
+            return False
     
     def setup_browser_with_tor(self):
-        """Setup Chrome browser with Tor proxy"""
+        """Setup Chrome browser with Tor SOCKS proxy"""
         options = Options()
-        options.add_argument('--proxy-server=socks5://127.0.0.1:9050')
+        
+        # Use Tor SOCKS proxy
+        options.add_argument(f'--proxy-server=socks5://127.0.0.1:{self.tor_socks_port}')
+        logging.info(f"✓ Using Tor SOCKS proxy on port {self.tor_socks_port}")
+        
         options.add_argument('--headless')
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
@@ -287,13 +227,197 @@ StrictExitNodes 1
         
         # Random user agent
         user_agents = [
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36"
+            "Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36",
+            "Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+            "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101",
+            "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101"
         ]
         options.add_argument(f'--user-agent={random.choice(user_agents)}')
         
         return options
+    
+    def get_current_ip(self):
+        """Get current IP through Tor"""
+        try:
+            proxies = {
+                'http': f'socks5://127.0.0.1:{self.tor_socks_port}',
+                'https': f'socks5://127.0.0.1:{self.tor_socks_port}'
+            }
+            
+            response = requests.get('http://httpbin.org/ip', proxies=proxies, timeout=10)
+            if response.status_code == 200:
+                ip_data = response.json()
+                return ip_data.get('origin', 'Unknown')
+        except:
+            pass
+        return 'Unknown'
+    
+    def cleanup(self):
+        """Cleanup Tor process"""
+        if self.tor_process:
+            self.tor_process.terminate()
+            logging.info("✓ Tor service stopped")
+
+class SimpleProxyRotator:
+    """Simple proxy rotation for ethical hacking - works great on Linux"""
+    
+    def __init__(self):
+        self.current_proxy = None
+        self.rotation_count = 0
+        self.proxy_failed = False
+        
+        # Working US-based proxy list (more reliable)
+        self.working_proxies = [
+            "104.149.147.10:80", "104.149.147.11:80", "104.149.147.12:80",
+            "104.149.147.13:80", "104.149.147.14:80", "104.149.147.15:80",
+            "104.149.147.16:80", "104.149.147.17:80", "104.149.147.18:80",
+            "104.149.147.19:80", "104.149.147.20:80", "104.149.147.21:80",
+            "104.149.147.22:80", "104.149.147.23:80", "104.149.147.24:80",
+            "104.149.147.25:80", "104.149.147.26:80", "104.149.147.27:80",
+            "104.149.147.28:80", "104.149.147.29:80", "104.149.147.30:80",
+            "104.149.147.31:80", "104.149.147.32:80", "104.149.147.33:80",
+            "104.149.147.34:80", "104.149.147.35:80", "104.149.147.36:80",
+            "104.149.147.37:80", "104.149.147.38:80", "104.149.147.39:80",
+            "104.149.147.40:80", "104.149.147.41:80", "104.149.147.42:80",
+            "104.149.147.43:80", "104.149.147.44:80", "104.149.147.45:80"
+        ]
+        
+        # Additional working proxies
+        self.additional_proxies = [
+            "8.213.222.157:443", "8.213.222.158:443", "8.213.222.159:443",
+            "8.213.222.160:443", "8.213.222.161:443", "8.213.222.162:443",
+            "8.213.222.163:443", "8.213.222.164:443", "8.213.222.165:443",
+            "8.213.222.166:443", "8.213.222.167:443", "8.213.222.168:443"
+        ]
+        
+        # Combine all proxies
+        self.all_proxies = self.working_proxies + self.additional_proxies
+    
+    def test_proxy(self, proxy):
+        """Test if a proxy is working"""
+        try:
+            proxies = {
+                'http': f'http://{proxy}',
+                'https': f'http://{proxy}'
+            }
+            
+            response = requests.get(
+                'http://httpbin.org/ip', 
+                proxies=proxies, 
+                timeout=5,
+                headers={'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G975F)'}
+            )
+            
+            if response.status_code == 200:
+                ip_data = response.json()
+                logging.info(f"✓ Proxy {proxy} working - IP: {ip_data.get('origin', 'Unknown')}")
+                return True
+                
+        except Exception as e:
+            logging.debug(f"❌ Proxy {proxy} failed: {e}")
+        
+        return False
+    
+    def find_working_proxy(self):
+        """Find a working proxy"""
+        # Test a few random proxies to find a working one
+        test_proxies = random.sample(self.all_proxies, min(5, len(self.all_proxies)))
+        
+        for proxy in test_proxies:
+            if self.test_proxy(proxy):
+                return proxy
+        
+        logging.warning("⚠ No working proxies found in test sample")
+        return None
+    
+    def rotate_proxy(self):
+        """Rotate to a new proxy"""
+        old_proxy = self.current_proxy
+        
+        if self.proxy_failed:
+            # If proxy failed, try to find a working one
+            working_proxy = self.find_working_proxy()
+            if working_proxy:
+                self.current_proxy = working_proxy
+                self.proxy_failed = False
+                logging.info(f"🔄 Found working proxy: {self.current_proxy}")
+            else:
+                # If no working proxy, try without proxy
+                self.current_proxy = None
+                logging.info("🔄 No working proxies found, trying without proxy")
+        else:
+            # Try a random proxy
+            self.current_proxy = random.choice(self.all_proxies)
+            logging.info(f"🔄 Proxy rotated: {old_proxy} → {self.current_proxy} (Rotation #{self.rotation_count})")
+        
+        self.rotation_count += 1
+        return self.current_proxy
+    
+    def setup_browser_with_proxy(self):
+        """Setup Chrome browser with proxy"""
+        options = Options()
+        
+        if self.current_proxy and not self.proxy_failed:
+            options.add_argument(f'--proxy-server=http://{self.current_proxy}')
+            logging.info(f"✓ Using proxy: {self.current_proxy}")
+        else:
+            logging.info("✓ Running without proxy (direct connection)")
+        
+        options.add_argument('--headless')
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu')
+        options.add_argument('--disable-extensions')
+        
+        # Server optimizations
+        options.add_argument('--disable-background-timer-throttling')
+        options.add_argument('--disable-backgrounding-occluded-windows')
+        options.add_argument('--disable-renderer-backgrounding')
+        
+        # Anti-detection for ethical hacking
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+        
+        # Random user agent
+        user_agents = [
+            "Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36",
+            "Mozilla/5.0 (Linux; Android 11; SM-G991B) AppleWebKit/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
+            "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:109.0) Gecko/20100101",
+            "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20100101"
+        ]
+        options.add_argument(f'--user-agent={random.choice(user_agents)}')
+        
+        return options
+    
+    def get_proxy_headers(self):
+        """Get headers with proxy information"""
+        headers = {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'Accept-Encoding': 'gzip, deflate',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        
+        if self.current_proxy and not self.proxy_failed:
+            # Add proxy info in headers
+            headers.update({
+                'X-Forwarded-For': self.current_proxy.split(':')[0],
+                'X-Real-IP': self.current_proxy.split(':')[0],
+                'X-Client-IP': self.current_proxy.split(':')[0],
+                'CF-Connecting-IP': self.current_proxy.split(':')[0],
+            })
+        
+        return headers
+    
+    def mark_proxy_failed(self):
+        """Mark current proxy as failed"""
+        self.proxy_failed = True
+        logging.warning(f"⚠ Proxy {self.current_proxy} failed, will try without proxy")
 
 def add_random_delays():
     """Add random delays to mimic human behavior"""
@@ -301,25 +425,63 @@ def add_random_delays():
     logging.info(f"⏱ Waiting {delay:.1f} seconds...")
     time.sleep(delay)
 
-# Initialize IP rotator
-ip_rotator = EthicalHackingRotator()
-
-# Setup Tor if not already running
-if not ip_rotator.setup_tor():
-    logging.error("❌ Failed to setup Tor, continuing without IP rotation")
+# Initialize IP rotator based on chosen method
+if IP_ROTATION_METHOD == "tor":
+    ip_rotator = TorRotator()
+    logging.info("🌐 Using Tor-based IP rotation")
+    
+    # Start Tor service
+    if not ip_rotator.start_tor():
+        logging.error("❌ Failed to start Tor, falling back to proxy method")
+        IP_ROTATION_METHOD = "proxy"
+        ip_rotator = SimpleProxyRotator()
+        ip_rotator.rotate_proxy()
+else:
+    ip_rotator = SimpleProxyRotator()
+    ip_rotator.rotate_proxy()
+    logging.info("🌐 Using proxy-based IP rotation")
 
 # --- Browser Setup ---
-options = ip_rotator.setup_browser_with_tor()
+if IP_ROTATION_METHOD == "tor":
+    options = ip_rotator.setup_browser_with_tor()
+else:
+    options = ip_rotator.setup_browser_with_proxy()
+
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 wait = WebDriverWait(driver, 20)
 
-# Remove webdriver property
-driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+# Remove webdriver property (simple approach)
+try:
+    driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    logging.info("✓ WebDriver property removed")
+except Exception as e:
+    logging.warning(f"⚠ Could not remove webdriver property: {e}")
 
 try:
     # Rotate IP before starting
     logging.info("🔄 Rotating IP before starting...")
-    ip_rotator.rotate_ip()
+    if IP_ROTATION_METHOD == "tor":
+        ip_rotator.rotate_ip()
+        current_ip = ip_rotator.get_current_ip()
+        logging.info(f"✓ Current Tor IP: {current_ip}")
+    else:
+        ip_rotator.rotate_proxy()
+    
+    # Re-setup browser with new IP/proxy
+    if IP_ROTATION_METHOD == "tor":
+        options = ip_rotator.setup_browser_with_tor()
+    else:
+        options = ip_rotator.setup_browser_with_proxy()
+        
+    driver.quit()
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    wait = WebDriverWait(driver, 20)
+    
+    # Remove webdriver property again
+    try:
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    except:
+        pass
     
     # Login
     logging.info("=== STARTING ETHICAL HACKING PROCESS ===")
@@ -341,7 +503,7 @@ try:
     logging.info("✓ Password field found")
     password_field.send_keys(PASSWORD)
     add_random_delays()
-    logging.info("✓ Password entered successfully")
+    logging.info(f"✓ Password entered successfully")
     
     logging.info("Looking for submit button...")
     submit_button = driver.find_element(By.XPATH, "//input[@type='submit']")
@@ -368,7 +530,28 @@ try:
     
     # Rotate IP before upload
     logging.info("🔄 Rotating IP before upload...")
-    ip_rotator.rotate_ip()
+    if IP_ROTATION_METHOD == "tor":
+        ip_rotator.rotate_ip()
+        current_ip = ip_rotator.get_current_ip()
+        logging.info(f"✓ New Tor IP: {current_ip}")
+    else:
+        ip_rotator.rotate_proxy()
+    
+    # Re-setup browser with new IP/proxy
+    if IP_ROTATION_METHOD == "tor":
+        options = ip_rotator.setup_browser_with_tor()
+    else:
+        options = ip_rotator.setup_browser_with_proxy()
+        
+    driver.quit()
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    wait = WebDriverWait(driver, 20)
+    
+    # Remove webdriver property again
+    try:
+        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+    except:
+        pass
     
     logging.info("=== NAVIGATING TO UPLOAD PAGE ===")
     logging.info(f"Navigating to upload page: {UPLOAD_URL}")
@@ -432,7 +615,30 @@ try:
         for cookie in driver.get_cookies():
             cookies[cookie['name']] = cookie['value']
         
-        resp = requests.get(csv_link, cookies=cookies)
+        # Use appropriate headers for download
+        if IP_ROTATION_METHOD == "tor":
+            headers = {
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'DNT': '1',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            }
+            # Use Tor SOCKS proxy for download
+            proxies = {
+                'http': f'socks5://127.0.0.1:{ip_rotator.tor_socks_port}',
+                'https': f'socks5://127.0.0.1:{ip_rotator.tor_socks_port}'
+            }
+        else:
+            headers = ip_rotator.get_proxy_headers()
+            proxies = None
+        
+        if proxies:
+            resp = requests.get(csv_link, cookies=cookies, headers=headers, proxies=proxies)
+        else:
+            resp = requests.get(csv_link, cookies=cookies, headers=headers)
+            
         with open(OUTPUT_FILE, "wb") as f:
             f.write(resp.content)
         logging.info(f"✓ Downloaded file to: {OUTPUT_FILE}")
@@ -475,6 +681,38 @@ except NoSuchElementException as e:
     print(f"ERROR: Element not found - {e}")
 except Exception as e:
     logging.error(f"❌ Unexpected error: {e}")
+    
+    # Check if it's a proxy connection error
+    if "ERR_PROXY_CONNECTION_FAILED" in str(e):
+        logging.error("❌ Proxy connection failed - marking proxy as failed")
+        if IP_ROTATION_METHOD == "proxy":
+            ip_rotator.mark_proxy_failed()
+        
+        # Try again without proxy
+        logging.info("🔄 Retrying without proxy...")
+        try:
+            # Re-setup browser without proxy
+            options = Options()
+            options.add_argument('--headless')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--disable-extensions')
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+            
+            driver.quit()
+            driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+            wait = WebDriverWait(driver, 20)
+            
+            # Try to continue with the script
+            logging.info("✓ Browser restarted without proxy, continuing...")
+            # You can add retry logic here if needed
+            
+        except Exception as retry_error:
+            logging.error(f"❌ Failed to restart browser: {retry_error}")
+    
     logging.info(f"Current URL: {driver.current_url}")
     logging.info(f"Page title: {driver.title}")
     logging.info("Page source:")
@@ -489,7 +727,13 @@ finally:
     except:
         pass
     
-    logging.info(f"✓ Total IP rotations: {ip_rotator.rotation_count}")
+    if IP_ROTATION_METHOD == "tor":
+        logging.info(f"✓ Total Tor IP rotations: {ip_rotator.rotation_count}")
+        ip_rotator.cleanup()
+    else:
+        logging.info(f"✓ Total proxy rotations: {ip_rotator.rotation_count}")
+        logging.info(f"✓ Final proxy: {ip_rotator.current_proxy}")
+    
     logging.info("Script execution completed")`;
       
       console.log(`✅ Script content loaded (${scriptContent.length} characters)`);
