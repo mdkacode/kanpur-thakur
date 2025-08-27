@@ -106,8 +106,8 @@ class TelecareProcessor {
       
       // Use enhanced script content with improved IP rotation methods and better logging
       console.log('🔧 Using enhanced script content with improved IP rotation...');
-      const scriptContent = `import time
-import os
+      const scriptContent = `import os
+import time
 import requests
 import random
 import logging
@@ -442,13 +442,75 @@ else:
     logging.info("🌐 Using proxy-based IP rotation")
 
 # --- Browser Setup ---
-if IP_ROTATION_METHOD == "tor":
-    options = ip_rotator.setup_browser_with_tor()
-else:
-    options = ip_rotator.setup_browser_with_proxy()
+def setup_chrome_driver():
+    """Setup Chrome driver with platform-specific handling"""
+    try:
+        # Try to get ChromeDriver with platform-specific options
+        try:
+            driver_path = ChromeDriverManager().install()
+            logging.info(f"✓ ChromeDriver found at: {driver_path}")
+        except Exception as chromedriver_error:
+            logging.warning(f"⚠ ChromeDriverManager failed: {chromedriver_error}")
+            logging.info("🔄 Trying to use system ChromeDriver...")
+            driver_path = None
+        
+        if IP_ROTATION_METHOD == "tor":
+            options = ip_rotator.setup_browser_with_tor()
+        else:
+            options = ip_rotator.setup_browser_with_proxy()
+        
+        # Add macOS ARM64 specific options
+        import platform
+        if platform.system() == "Darwin" and platform.machine() == "arm64":
+            logging.info("🖥️ Detected macOS ARM64 - applying compatibility options")
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--disable-software-rasterizer')
+            options.add_argument('--disable-extensions')
+            options.add_argument('--disable-background-timer-throttling')
+            options.add_argument('--disable-backgrounding-occluded-windows')
+            options.add_argument('--disable-renderer-backgrounding')
+            options.add_argument('--disable-web-security')
+            options.add_argument('--allow-running-insecure-content')
+            options.add_argument('--disable-features=VizDisplayCompositor')
+            options.add_argument('--disable-ipc-flooding-protection')
+        
+        if driver_path:
+            driver = webdriver.Chrome(service=Service(driver_path), options=options)
+        else:
+            driver = webdriver.Chrome(options=options)
+        wait = WebDriverWait(driver, 20)
+        logging.info("✓ Chrome driver initialized successfully")
+        return driver, wait
+        
+    except Exception as e:
+        logging.error(f"❌ ChromeDriver setup failed: {e}")
+        # Fallback: try without webdriver-manager
+        try:
+            logging.info("🔄 Trying fallback Chrome setup...")
+            if IP_ROTATION_METHOD == "tor":
+                options = ip_rotator.setup_browser_with_tor()
+            else:
+                options = ip_rotator.setup_browser_with_proxy()
+            
+            # Add fallback options
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--disable-extensions')
+            
+            driver = webdriver.Chrome(options=options)
+            wait = WebDriverWait(driver, 20)
+            logging.info("✓ Chrome driver initialized with fallback method")
+            return driver, wait
+            
+        except Exception as fallback_error:
+            logging.error(f"❌ Fallback Chrome setup also failed: {fallback_error}")
+            raise Exception(f"ChromeDriver setup failed: {e}. Fallback also failed: {fallback_error}")
 
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-wait = WebDriverWait(driver, 20)
+# Initialize driver
+driver, wait = setup_chrome_driver()
 
 # Remove webdriver property (simple approach)
 try:
@@ -475,8 +537,8 @@ try:
         options = ip_rotator.setup_browser_with_proxy()
         
     driver.quit()
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    wait = WebDriverWait(driver, 20)
+    # Use the same setup function for consistency
+    driver, wait = setup_chrome_driver()
     
     # Remove webdriver property again
     try:
@@ -492,25 +554,34 @@ try:
     logging.info("✓ Login page loaded successfully")
     
     logging.info("=== FILLING LOGIN FORM ===")
-    logging.info(f"Looking for username field...")
-    username_field = wait.until(EC.presence_of_element_located((By.NAME, "username")))
-    logging.info("✓ Username field found")
-    username_field.send_keys(USERNAME)
-    add_random_delays()
-    logging.info(f"✓ Username entered: {USERNAME}")
-    
-    logging.info(f"Looking for password field...")
-    password_field = wait.until(EC.presence_of_element_located((By.NAME, "password")))
-    logging.info("✓ Password field found")
-    password_field.send_keys(PASSWORD)
-    add_random_delays()
-    logging.info("✓ Password entered successfully")
-    
-    logging.info("Looking for submit button...")
-    submit_button = driver.find_element(By.XPATH, "//input[@type='submit']")
-    logging.info("✓ Submit button found")
-    submit_button.click()
-    logging.info("✓ Login form submitted")
+    try:
+        logging.info(f"Looking for username field...")
+        username_field = wait.until(EC.presence_of_element_located((By.NAME, "username")))
+        logging.info("✓ Username field found")
+        username_field.send_keys(USERNAME)
+        add_random_delays()
+        logging.info(f"✓ Username entered: {USERNAME}")
+        
+        logging.info(f"Looking for password field...")
+        password_field = wait.until(EC.presence_of_element_located((By.NAME, "password")))
+        logging.info("✓ Password field found")
+        password_field.send_keys(PASSWORD)
+        add_random_delays()
+        logging.info("✓ Password entered successfully")
+        
+        logging.info("Looking for submit button...")
+        submit_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//input[@type='submit']")))
+        logging.info("✓ Submit button found")
+        submit_button.click()
+        logging.info("✓ Login form submitted")
+    except TimeoutException as e:
+        logging.error(f"❌ Timeout during login form filling: {e}")
+        logging.info(f"Current URL: {driver.current_url}")
+        logging.info(f"Page title: {driver.title}")
+        raise
+    except Exception as e:
+        logging.error(f"❌ Error during login form filling: {e}")
+        raise
     
     add_random_delays()
     logging.info("=== LOGIN PROCESS COMPLETED ===")
@@ -519,15 +590,23 @@ try:
     current_url = driver.current_url
     logging.info(f"Current URL after login: {current_url}")
     
+    # Wait a bit for page to load after login
+    time.sleep(3)
+    
     try:
-        logout_link = driver.find_element(By.XPATH, "//a[contains(@href, 'logout')]")
+        logout_link = wait.until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'logout')]")))
         logging.info("✓ Login successful - Logout link found")
-    except NoSuchElementException:
+    except TimeoutException:
         try:
-            user_info = driver.find_element(By.XPATH, "//*[contains(text(), 'Logged in as')]")
+            user_info = wait.until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Logged in as')]")))
             logging.info("✓ Login successful - User info found")
-        except NoSuchElementException:
+        except TimeoutException:
             logging.warning("⚠ Warning: Could not confirm login success, but proceeding...")
+            # Check if we're still on login page
+            if "login" in current_url.lower():
+                logging.error("❌ Still on login page - login may have failed")
+                print("ERROR: Login failed - still on login page")
+                raise Exception("Login failed - still on login page")
     
     # Navigate to upload page (same IP, no rotation needed)
     logging.info("=== NAVIGATING TO UPLOAD PAGE ===")
@@ -544,45 +623,89 @@ try:
     
     # Wait for the file input to be present and visible
     logging.info("=== UPLOAD FORM PROCESS ===")
-    logging.info("Waiting for file input element...")
-    file_input = wait.until(EC.presence_of_element_located((By.NAME, "filename")))
-    logging.info(f"✓ Found file input element: {file_input}")
-    
-    # Upload CSV file
-    file_input.send_keys(CSV_PATH)
-    add_random_delays()
-    logging.info(f"✓ Selected file: {CSV_PATH}")
-    
-    # Check the "Return thousands block data?" checkbox
-    logging.info("Looking for thousands checkbox...")
-    thousands_checkbox = wait.until(EC.presence_of_element_located((By.NAME, "thousands")))
-    if not thousands_checkbox.is_selected():
-        thousands_checkbox.click()
-        logging.info("✓ Checked 'Return thousands block data' option")
-    else:
-        logging.info("✓ Thousands checkbox was already selected")
-    
-    # Submit the form
-    logging.info("Looking for submit button...")
-    submit_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//input[@type='submit' and @value='Upload and Process File...']")))
-    submit_button.click()
-    logging.info("✓ CSV upload form submitted")
+    try:
+        logging.info("Waiting for file input element...")
+        file_input = wait.until(EC.presence_of_element_located((By.NAME, "filename")))
+        logging.info(f"✓ Found file input element: {file_input}")
+        
+        # Verify file exists before uploading
+        if not os.path.exists(CSV_PATH):
+            error_msg = f"❌ Input file not found: {CSV_PATH}"
+            logging.error(error_msg)
+            print(f"ERROR: {error_msg}")
+            raise FileNotFoundError(error_msg)
+        
+        # Upload CSV file
+        file_input.send_keys(CSV_PATH)
+        add_random_delays()
+        logging.info(f"✓ Selected file: {CSV_PATH}")
+        
+        # Check the "Return thousands block data?" checkbox
+        logging.info("Looking for thousands checkbox...")
+        thousands_checkbox = wait.until(EC.presence_of_element_located((By.NAME, "thousands")))
+        if not thousands_checkbox.is_selected():
+            thousands_checkbox.click()
+            logging.info("✓ Checked 'Return thousands block data' option")
+        else:
+            logging.info("✓ Thousands checkbox was already selected")
+        
+        # Submit the form
+        logging.info("Looking for submit button...")
+        submit_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//input[@type='submit' and @value='Upload and Process File...']")))
+        submit_button.click()
+        logging.info("✓ CSV upload form submitted")
+        
+    except TimeoutException as e:
+        logging.error(f"❌ Timeout during upload form processing: {e}")
+        print(f"ERROR: Timeout during upload form processing - {e}")
+        raise
+    except Exception as e:
+        logging.error(f"❌ Error during upload form processing: {e}")
+        print(f"ERROR: Error during upload form processing - {e}")
+        raise
 
     # Wait for processing
     logging.info("=== PROCESSING FILE ===")
-    time.sleep(10)
-    logging.info("✓ Processing completed")
+    try:
+        # Wait for processing to complete with timeout
+        wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        time.sleep(10)  # Additional wait for processing
+        logging.info("✓ Processing completed")
+    except TimeoutException:
+        logging.warning("⚠ Processing timeout - continuing anyway")
+        time.sleep(5)  # Reduced wait
 
     # Find and download resulting CSV
     logging.info("=== DOWNLOADING RESULTS ===")
-    links = driver.find_elements(By.TAG_NAME, "a")
-    csv_link = None
-    for link in links:
-        href = link.get_attribute("href")
-        if href and href.endswith(".csv"):
-            csv_link = href
-            break
-    logging.info(f"Found {len(links)} links, looking for CSV download link...")
+    try:
+        # Wait for page to fully load after processing
+        wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
+        time.sleep(3)
+        
+        links = driver.find_elements(By.TAG_NAME, "a")
+        csv_link = None
+        for link in links:
+            href = link.get_attribute("href")
+            if href and href.endswith(".csv"):
+                csv_link = href
+                break
+        logging.info(f"Found {len(links)} links, looking for CSV download link...")
+        
+        if not csv_link:
+            logging.warning("⚠ No CSV link found in first scan, waiting and retrying...")
+            time.sleep(5)
+            links = driver.find_elements(By.TAG_NAME, "a")
+            for link in links:
+                href = link.get_attribute("href")
+                if href and href.endswith(".csv"):
+                    csv_link = href
+                    break
+            logging.info(f"Retry found {len(links)} links")
+            
+    except Exception as e:
+        logging.error(f"❌ Error finding CSV download link: {e}")
+        print(f"ERROR: Error finding CSV download link - {e}")
+        raise
 
     if csv_link:
         logging.info(f"✓ Found CSV download link: {csv_link}")
@@ -611,16 +734,26 @@ try:
             headers = ip_rotator.get_proxy_headers()
             proxies = None
         
-        if proxies:
-            resp = requests.get(csv_link, cookies=cookies, headers=headers, proxies=proxies)
-        else:
-            resp = requests.get(csv_link, cookies=cookies, headers=headers)
-        
-        # Check if download was successful
-        if resp.status_code != 200:
-            logging.error(f"❌ Failed to download CSV: HTTP {resp.status_code}")
-            print(f"ERROR: Failed to download CSV - HTTP {resp.status_code}")
-            raise Exception(f"CSV download failed with HTTP {resp.status_code}")
+        try:
+            if proxies:
+                resp = requests.get(csv_link, cookies=cookies, headers=headers, proxies=proxies, timeout=30)
+            else:
+                resp = requests.get(csv_link, cookies=cookies, headers=headers, timeout=30)
+            
+            # Check if download was successful
+            if resp.status_code != 200:
+                logging.error(f"❌ Failed to download CSV: HTTP {resp.status_code}")
+                print(f"ERROR: Failed to download CSV - HTTP {resp.status_code}")
+                raise Exception(f"CSV download failed with HTTP {resp.status_code}")
+                
+        except requests.exceptions.Timeout:
+            logging.error("❌ CSV download timeout")
+            print("ERROR: CSV download timeout")
+            raise Exception("CSV download timeout")
+        except requests.exceptions.RequestException as e:
+            logging.error(f"❌ CSV download request failed: {e}")
+            print(f"ERROR: CSV download request failed - {e}")
+            raise Exception(f"CSV download request failed: {e}")
             
         logging.info(f"✓ CSV download successful: {len(resp.content)} bytes")
         
@@ -676,14 +809,19 @@ except TimeoutException as e:
     logging.info(f"Page title: {driver.title}")
     logging.info("Page source:")
     logging.info(driver.page_source[:2000])
+    print(f"ERROR: Timeout error - {e}")
+    print(f"Current URL: {driver.current_url}")
 except NoSuchElementException as e:
     logging.error(f"❌ Element not found: {e}")
     logging.info(f"Current URL: {driver.current_url}")
     logging.info(f"Page title: {driver.title}")
     logging.info("Page source:")
     logging.info(driver.page_source[:2000])
+    print(f"ERROR: Element not found - {e}")
+    print(f"Current URL: {driver.current_url}")
 except Exception as e:
     logging.error(f"❌ Unexpected error: {e}")
+    print(f"ERROR: Unexpected error - {e}")
     
     # Check if it's a proxy connection error
     if "ERR_PROXY_CONNECTION_FAILED" in str(e):
@@ -706,8 +844,8 @@ except Exception as e:
             options.add_experimental_option('useAutomationExtension', False)
             
             driver.quit()
-            driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-            wait = WebDriverWait(driver, 20)
+            # Use the same setup function for consistency
+            driver, wait = setup_chrome_driver()
             
             # Try to continue with the script
             logging.info("✓ Browser restarted without proxy, continuing...")
@@ -715,26 +853,36 @@ except Exception as e:
             
         except Exception as retry_error:
             logging.error(f"❌ Failed to restart browser: {retry_error}")
-    
-    logging.info(f"Current URL: {driver.current_url}")
-    logging.info(f"Page title: {driver.title}")
-    logging.info("Page source:")
-    logging.info(driver.page_source[:2000])
+            print(f"ERROR: Failed to restart browser - {retry_error}")
+        
+        # Log current state for debugging
+        try:
+            logging.info(f"Current URL: {driver.current_url}")
+            logging.info(f"Page title: {driver.title}")
+            logging.info("Page source:")
+            logging.info(driver.page_source[:2000])
+        except Exception as log_error:
+            logging.error(f"❌ Could not log browser state: {log_error}")
+            print(f"ERROR: Could not log browser state - {log_error}")
 
 finally:
     logging.info("=== CLEANUP ===")
     try:
-        driver.quit()
-        logging.info("✓ Browser closed")
-    except:
-        pass
+        if driver:
+            driver.quit()
+            logging.info("✓ Browser closed")
+    except Exception as cleanup_error:
+        logging.warning(f"⚠ Browser cleanup error: {cleanup_error}")
     
-    if IP_ROTATION_METHOD == "tor":
-        logging.info(f"✓ Total Tor IP rotations: {ip_rotator.rotation_count}")
-        ip_rotator.cleanup()
-    else:
-        logging.info(f"✓ Total proxy rotations: {ip_rotator.rotation_count}")
-        logging.info(f"✓ Final proxy: {ip_rotator.current_proxy}")
+    try:
+        if IP_ROTATION_METHOD == "tor":
+            logging.info(f"✓ Total Tor IP rotations: {ip_rotator.rotation_count}")
+            ip_rotator.cleanup()
+        else:
+            logging.info(f"✓ Total proxy rotations: {ip_rotator.rotation_count}")
+            logging.info(f"✓ Final proxy: {ip_rotator.current_proxy}")
+    except Exception as ip_cleanup_error:
+        logging.warning(f"⚠ IP rotation cleanup error: {ip_cleanup_error}")
     
     logging.info("Script execution completed")`;
       
@@ -929,6 +1077,13 @@ finally:
         
         // Store Python script log
         console.log('Storing Python script log...');
+        // Debug: Log what we received from Python script
+        console.log('🔍 Python script output analysis:');
+        console.log(`   STDOUT length: ${pythonResult.stdout ? pythonResult.stdout.length : 0}`);
+        console.log(`   STDERR length: ${pythonResult.stderr ? pythonResult.stderr.length : 0}`);
+        console.log(`   STDOUT preview: ${pythonResult.stdout ? pythonResult.stdout.substring(0, 200) + '...' : 'None'}`);
+        console.log(`   STDERR preview: ${pythonResult.stderr ? pythonResult.stderr.substring(0, 200) + '...' : 'None'}`);
+        
         const scriptLog = `STDOUT:\n${pythonResult.stdout || 'No stdout'}\n\nSTDERR:\n${pythonResult.stderr || 'No stderr'}`;
         await fileStorageService.storeScriptLog(zipcode, run.id, scriptLog);
         
@@ -937,12 +1092,30 @@ finally:
           throw new Error(`Python script error: ${pythonResult.stdout.trim()}`);
         }
         
-        // Check if stderr contains critical errors
-        if (pythonResult.stderr && 
-            (pythonResult.stderr.includes('WebDriverException') || 
-             pythonResult.stderr.includes('chromedriver') ||
-             pythonResult.stderr.includes('selenium.common.exceptions'))) {
-          throw new Error(`Python script ChromeDriver error: ${pythonResult.stderr.split('\n')[0]}`);
+        // Check if stderr contains critical errors (only if script failed)
+        if (pythonResult.stderr && pythonResult.stderr.trim() && 
+            (pythonResult.stderr.includes('Traceback') || 
+             pythonResult.stderr.includes('Error:') ||
+             pythonResult.stderr.includes('Exception:') ||
+             pythonResult.stderr.includes('FATAL:') ||
+             pythonResult.stderr.includes('CRITICAL:'))) {
+          throw new Error(`Python script error: ${pythonResult.stderr.split('\n')[0]}`);
+        }
+        
+        // Check if script succeeded by looking for success indicators
+        const hasSuccessIndicator = pythonResult.stdout && (
+          pythonResult.stdout.includes('CSV content sent to stdout') ||
+          pythonResult.stdout.includes('✓ Script execution completed') ||
+          pythonResult.stdout.includes('✓ CSV content sent to stdout') ||
+          pythonResult.stdout.includes('NPA,NXX,THOUSANDS') ||
+          pythonResult.stdout.includes('COMPANY TYPE') ||
+          pythonResult.stdout.includes('OCN,COMPANY,LATA')
+        );
+        
+        if (!hasSuccessIndicator) {
+          console.log('⚠️ No clear success indicator found in script output');
+        } else {
+          console.log('✅ Script success indicators found');
         }
         
         // Check if output file was created
@@ -951,15 +1124,33 @@ finally:
           outputContent = await fs.readFile(pythonResult.outputFilePath, 'utf8');
           console.log(`Output file created: ${pythonResult.outputFilePath}`);
         } catch (fileError) {
+          console.log(`⚠️ Could not read output file: ${fileError.message}`);
+          
           // Check if stdout contains error message
           if (pythonResult.stdout && pythonResult.stdout.trim().startsWith('ERROR:')) {
             throw new Error(`Python script error: ${pythonResult.stdout.trim()}`);
           }
-          throw new Error('No output file created by Python script - this may be due to ChromeDriver/Selenium configuration issues');
+          
+          // Check if the script actually succeeded by looking at stdout content
+          if (pythonResult.stdout && (
+            pythonResult.stdout.includes('CSV content sent to stdout') ||
+            pythonResult.stdout.includes('NPA,NXX,THOUSANDS') ||
+            pythonResult.stdout.includes('COMPANY TYPE') ||
+            pythonResult.stdout.includes('OCN,COMPANY,LATA')
+          )) {
+            // Script succeeded, use stdout content instead of file
+            console.log('✅ Script succeeded, using stdout content as output');
+            outputContent = pythonResult.stdout;
+          } else {
+            throw new Error('No output file created by Python script and no valid output in stdout');
+          }
         }
         
         // Parse output CSV
         console.log('Parsing output CSV...');
+        console.log(`📊 CSV content length: ${outputContent.length} characters`);
+        console.log(`📊 CSV content preview: ${outputContent.substring(0, 200)}...`);
+        
         const outputRows = await this.parseOutputCSV(outputContent);
         
         // Store output CSV file
@@ -1008,12 +1199,14 @@ finally:
       console.error(`Error in telecare processing for zipcode ${zipcode}:`, error);
       
       // Provide more user-friendly error messages
-      if (error.message && error.message.includes('ChromeDriver')) {
+      if (error.message && error.message.includes('ChromeDriver') && error.message.includes('compatibility')) {
         throw new Error(`ChromeDriver compatibility issue for zipcode ${zipcode}. This is typically due to macOS ARM64 compatibility. Please check Chrome and ChromeDriver installation.`);
       } else if (error.message && error.message.includes('Python script')) {
         throw new Error(`Python script execution failed for zipcode ${zipcode}: ${error.message}`);
       } else if (error.message && error.message.includes('ENOENT')) {
         throw new Error(`File system error for zipcode ${zipcode} - this has been fixed and should not happen again.`);
+      } else if (error.message && error.message.includes('No output file created')) {
+        throw new Error(`Processing completed but no output file was created for zipcode ${zipcode}. This may indicate the script ran but failed to generate output.`);
       }
       
       throw error;
