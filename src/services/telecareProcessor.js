@@ -128,15 +128,9 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('ethical_hacking.log'),
-        logging.StreamHandler(sys.stdout)  # Explicitly use sys.stdout for better visibility
+        logging.StreamHandler()
     ]
 )
-
-# Also print directly to console for immediate visibility
-print("🚀 Python script starting with enhanced IP rotation...")
-print(f"📅 Started at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
-
-print("=" * 60)
 
 # --- Config ---
 LOGIN_URL = "https://www.telcodata.us/login"
@@ -162,11 +156,9 @@ class TorRotator:
     def start_tor(self):
         """Start Tor service"""
         try:
-            print("🔧 Starting Tor service...")
             # Check if Tor is installed
             result = subprocess.run(['which', 'tor'], capture_output=True, text=True)
             if result.returncode != 0:
-                print("❌ Tor not found. Install with: brew install tor")
                 logging.error("❌ Tor not found. Install with: brew install tor")
                 return False
             
@@ -182,19 +174,16 @@ class TorRotator:
             self.tor_process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             time.sleep(3)  # Wait for Tor to start
             
-            print("✓ Tor service started successfully")
             logging.info("✓ Tor service started")
             return True
             
         except Exception as e:
-            print(f"❌ Failed to start Tor: {e}")
             logging.error(f"❌ Failed to start Tor: {e}")
             return False
     
     def rotate_ip(self):
         """Rotate to new IP using Tor"""
         try:
-            print(f"🔄 Rotating Tor IP (Rotation #{self.rotation_count + 1})...")
             # Send NEWNYM signal to Tor control port
             import socket
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -205,12 +194,10 @@ class TorRotator:
             time.sleep(5)
             
             self.rotation_count += 1
-            print(f"✓ Tor IP rotated successfully (Rotation #{self.rotation_count})")
             logging.info(f"🔄 Tor IP rotated (Rotation #{self.rotation_count})")
             return True
             
         except Exception as e:
-            print(f"❌ Failed to rotate Tor IP: {e}")
             logging.error(f"❌ Failed to rotate Tor IP: {e}")
             return False
     
@@ -350,22 +337,18 @@ class SimpleProxyRotator:
         
         if self.proxy_failed:
             # If proxy failed, try to find a working one
-            print("🔄 Finding working proxy after failure...")
             working_proxy = self.find_working_proxy()
             if working_proxy:
                 self.current_proxy = working_proxy
                 self.proxy_failed = False
-                print(f"✓ Found working proxy: {self.current_proxy}")
                 logging.info(f"🔄 Found working proxy: {self.current_proxy}")
             else:
                 # If no working proxy, try without proxy
                 self.current_proxy = None
-                print("🔄 No working proxies found, trying without proxy")
                 logging.info("🔄 No working proxies found, trying without proxy")
         else:
             # Try a random proxy
             self.current_proxy = random.choice(self.all_proxies)
-            print(f"🔄 Proxy rotated: {old_proxy} → {self.current_proxy} (Rotation #{self.rotation_count + 1})")
             logging.info(f"🔄 Proxy rotated: {old_proxy} → {self.current_proxy} (Rotation #{self.rotation_count})")
         
         self.rotation_count += 1
@@ -444,20 +427,16 @@ def add_random_delays():
 
 # Initialize IP rotator based on chosen method
 if IP_ROTATION_METHOD == "tor":
-    print("🌐 Initializing Tor-based IP rotation...")
     ip_rotator = TorRotator()
     logging.info("🌐 Using Tor-based IP rotation")
     
     # Start Tor service
     if not ip_rotator.start_tor():
-        print("❌ Failed to start Tor, falling back to proxy method")
         logging.error("❌ Failed to start Tor, falling back to proxy method")
         IP_ROTATION_METHOD = "proxy"
         ip_rotator = SimpleProxyRotator()
         ip_rotator.rotate_proxy()
-        print("🔄 Switched to proxy-based IP rotation")
 else:
-    print("🌐 Initializing proxy-based IP rotation...")
     ip_rotator = SimpleProxyRotator()
     ip_rotator.rotate_proxy()
     logging.info("🌐 Using proxy-based IP rotation")
@@ -479,20 +458,17 @@ except Exception as e:
     logging.warning(f"⚠ Could not remove webdriver property: {e}")
 
 try:
-    # Rotate IP before starting
-    print("🔄 Rotating IP before starting...")
-    logging.info("🔄 Rotating IP before starting...")
+    # Rotate IP before starting (this will be used for both login and upload)
+    logging.info("🔄 Setting up IP for entire session...")
     if IP_ROTATION_METHOD == "tor":
         ip_rotator.rotate_ip()
         current_ip = ip_rotator.get_current_ip()
-        print(f"✓ Current Tor IP: {current_ip}")
-        logging.info(f"✓ Current Tor IP: {current_ip}")
+        logging.info(f"✓ Session Tor IP: {current_ip}")
     else:
         ip_rotator.rotate_proxy()
-        print(f"✓ Current proxy: {ip_rotator.current_proxy}")
+        logging.info(f"✓ Session proxy: {ip_rotator.current_proxy}")
     
-    # Re-setup browser with new IP/proxy
-    print("🔧 Re-setting up browser with new IP/proxy...")
+    # Setup browser with the chosen IP/proxy (will be used throughout)
     if IP_ROTATION_METHOD == "tor":
         options = ip_rotator.setup_browser_with_tor()
     else:
@@ -501,7 +477,6 @@ try:
     driver.quit()
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     wait = WebDriverWait(driver, 20)
-    print("✓ Browser restarted with new IP/proxy")
     
     # Remove webdriver property again
     try:
@@ -529,7 +504,7 @@ try:
     logging.info("✓ Password field found")
     password_field.send_keys(PASSWORD)
     add_random_delays()
-    logging.info(f"✓ Password entered successfully")
+    logging.info("✓ Password entered successfully")
     
     logging.info("Looking for submit button...")
     submit_button = driver.find_element(By.XPATH, "//input[@type='submit']")
@@ -554,31 +529,7 @@ try:
         except NoSuchElementException:
             logging.warning("⚠ Warning: Could not confirm login success, but proceeding...")
     
-    # Rotate IP before upload
-    logging.info("🔄 Rotating IP before upload...")
-    if IP_ROTATION_METHOD == "tor":
-        ip_rotator.rotate_ip()
-        current_ip = ip_rotator.get_current_ip()
-        logging.info(f"✓ New Tor IP: {current_ip}")
-    else:
-        ip_rotator.rotate_proxy()
-    
-    # Re-setup browser with new IP/proxy
-    if IP_ROTATION_METHOD == "tor":
-        options = ip_rotator.setup_browser_with_tor()
-    else:
-        options = ip_rotator.setup_browser_with_proxy()
-        
-    driver.quit()
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-    wait = WebDriverWait(driver, 20)
-    
-    # Remove webdriver property again
-    try:
-        driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-    except:
-        pass
-    
+    # Navigate to upload page (same IP, no rotation needed)
     logging.info("=== NAVIGATING TO UPLOAD PAGE ===")
     logging.info(f"Navigating to upload page: {UPLOAD_URL}")
     driver.get(UPLOAD_URL)
@@ -641,7 +592,7 @@ try:
         for cookie in driver.get_cookies():
             cookies[cookie['name']] = cookie['value']
         
-        # Use appropriate headers for download
+        # Use appropriate headers for download (same IP as browser)
         if IP_ROTATION_METHOD == "tor":
             headers = {
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -651,7 +602,7 @@ try:
                 'Connection': 'keep-alive',
                 'Upgrade-Insecure-Requests': '1',
             }
-            # Use Tor SOCKS proxy for download
+            # Use Tor SOCKS proxy for download (same as browser)
             proxies = {
                 'http': f'socks5://127.0.0.1:{ip_rotator.tor_socks_port}',
                 'https': f'socks5://127.0.0.1:{ip_rotator.tor_socks_port}'
@@ -664,10 +615,32 @@ try:
             resp = requests.get(csv_link, cookies=cookies, headers=headers, proxies=proxies)
         else:
             resp = requests.get(csv_link, cookies=cookies, headers=headers)
+        
+        # Check if download was successful
+        if resp.status_code != 200:
+            logging.error(f"❌ Failed to download CSV: HTTP {resp.status_code}")
+            print(f"ERROR: Failed to download CSV - HTTP {resp.status_code}")
+            raise Exception(f"CSV download failed with HTTP {resp.status_code}")
             
-        with open(OUTPUT_FILE, "wb") as f:
-            f.write(resp.content)
-        logging.info(f"✓ Downloaded file to: {OUTPUT_FILE}")
+        logging.info(f"✓ CSV download successful: {len(resp.content)} bytes")
+        
+        # Write the downloaded CSV content to the output file
+        try:
+            with open(OUTPUT_FILE, "wb") as f:
+                f.write(resp.content)
+            logging.info(f"✓ Downloaded file to: {OUTPUT_FILE}")
+        except Exception as write_error:
+            logging.error(f"❌ Failed to write output file: {write_error}")
+            print(f"ERROR: Failed to write output file: {write_error}")
+            # Try to send content directly to stdout as fallback
+            try:
+                print(resp.content.decode('utf-8', errors='ignore'))
+                logging.info("✓ Sent CSV content directly to stdout as fallback")
+                # Continue with the script since we successfully output the content
+            except Exception as decode_error:
+                logging.error(f"❌ Failed to decode content: {decode_error}")
+                print("ERROR: Could not process CSV content")
+                raise
         
         # Read the output file and send to stdout for Node.js to capture
         try:
@@ -675,11 +648,17 @@ try:
                 csv_content = f.read()
                 # Send CSV content to stdout (this is what Node.js will capture)
                 print(csv_content)
-                logging.info(f"CSV content sent to stdout ({len(csv_content)} characters)")
-        except Exception as e:
-            logging.error(f"Error reading output file: {e}")
-            # Send error message to stdout so Node.js knows something went wrong
-            print(f"ERROR: Could not read output file: {e}")
+                logging.info(f"✓ CSV content sent to stdout ({len(csv_content)} characters)")
+        except Exception as read_error:
+            logging.error(f"❌ Error reading output file: {read_error}")
+            # Try to send the raw response content as fallback
+            try:
+                print(resp.content.decode('utf-8', errors='ignore'))
+                logging.info("✓ Sent raw response content as fallback")
+            except Exception as fallback_error:
+                logging.error(f"❌ Fallback also failed: {fallback_error}")
+                print("ERROR: Could not output CSV content in any format")
+                raise
     else:
         logging.error("❌ Error: CSV download link not found.")
         logging.info("Available links:")
@@ -697,14 +676,12 @@ except TimeoutException as e:
     logging.info(f"Page title: {driver.title}")
     logging.info("Page source:")
     logging.info(driver.page_source[:2000])
-    print(f"ERROR: Timeout error - {e}")
 except NoSuchElementException as e:
     logging.error(f"❌ Element not found: {e}")
     logging.info(f"Current URL: {driver.current_url}")
     logging.info(f"Page title: {driver.title}")
     logging.info("Page source:")
     logging.info(driver.page_source[:2000])
-    print(f"ERROR: Element not found - {e}")
 except Exception as e:
     logging.error(f"❌ Unexpected error: {e}")
     
@@ -743,7 +720,6 @@ except Exception as e:
     logging.info(f"Page title: {driver.title}")
     logging.info("Page source:")
     logging.info(driver.page_source[:2000])
-    print(f"ERROR: {e}")
 
 finally:
     logging.info("=== CLEANUP ===")
