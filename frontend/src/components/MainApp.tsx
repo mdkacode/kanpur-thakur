@@ -22,6 +22,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import ThemeToggle from './ThemeToggle';
 import Dashboard from './Dashboard';
 import FileUpload from './FileUpload';
+import UploadPage from './UploadPage';
 import EnhancedDataTable from './EnhancedDataTable';
 import UploadHistory from './UploadHistory';
 import States from './States';
@@ -147,7 +148,7 @@ const MainApp: React.FC = () => {
     return (
       <Routes>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/upload" element={<FileUpload onUploadSuccess={handleUploadSuccess} />} />
+        <Route path="/upload" element={<UploadPage onUploadSuccess={handleUploadSuccess} />} />
         <Route path="/records" element={<EnhancedDataTable refreshTrigger={refreshTrigger} />} />
         <Route path="/view-records" element={<ViewRecordsDashboard />} />
         <Route path="/states" element={<States />} />

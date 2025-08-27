@@ -27,7 +27,11 @@
     "cron:timezones": "node src/scripts/cronTimezoneProcessor.js",
     "setup:cron": "./setup-cron.sh",
     "update:nginx-limits": "./update_nginx_upload_limits.sh",
-    "fix:sequences": "node fix_database_sequences.js"
+    "fix:sequences": "node fix_database_sequences.js",
+    "fix:sequences-simple": "node fix_sequences_simple.js",
+    "check:schema": "node check_database_schema.js",
+    "fix:server-uploads": "./fix_server_upload_limits.sh",
+    "test:large-upload": "./test_large_upload.sh"
   },
   "keywords": [
     "express",

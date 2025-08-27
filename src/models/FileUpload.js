@@ -22,6 +22,29 @@ class FileUpload {
       return result.rows[0];
     } catch (error) {
       console.error('Error creating upload record:', error);
+      
+      // Handle sequence issues specifically
+      if (error.code === '23505' && error.constraint === 'file_uploads_pkey') {
+        console.log('🔄 Detected sequence issue, attempting to fix...');
+        try {
+          // Fix the sequence
+          await FileUpload.fixSequence();
+          
+          // Retry the insert
+          const retryQuery = `
+            INSERT INTO file_uploads (filename, original_name, file_size, file_path, file_type, status)
+            VALUES ($1::VARCHAR(255), $2::VARCHAR(255), $3::BIGINT, $4::VARCHAR(500), $5::VARCHAR(50), $6::VARCHAR(20))
+            RETURNING *
+          `;
+          const retryResult = await db.query(retryQuery, values);
+          console.log('✅ Sequence fixed and insert retried successfully');
+          return retryResult.rows[0];
+        } catch (retryError) {
+          console.error('❌ Failed to fix sequence and retry:', retryError);
+          throw retryError;
+        }
+      }
+      
       throw error;
     }
   }
@@ -169,6 +192,26 @@ class FileUpload {
       return result.rows;
     } catch (error) {
       console.error('Error getting recent uploads:', error);
+      throw error;
+    }
+  }
+
+  static async fixSequence() {
+    try {
+      console.log('🔧 Fixing file_uploads sequence...');
+      
+      // Get current max ID
+      const maxIdResult = await db.query('SELECT MAX(id) as max_id FROM file_uploads');
+      const maxId = maxIdResult.rows[0].max_id || 0;
+      
+      // Set sequence to max ID + 1
+      const newSequenceValue = maxId + 1;
+      await db.query('SELECT setval(\'file_uploads_id_seq\', $1, true)', [newSequenceValue]);
+      
+      console.log(`✅ Sequence fixed to: ${newSequenceValue}`);
+      return newSequenceValue;
+    } catch (error) {
+      console.error('Error fixing sequence:', error);
       throw error;
     }
   }

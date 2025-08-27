@@ -59,7 +59,7 @@ async function fixDatabaseSequences() {
       INSERT INTO file_uploads (filename, original_name, file_size, file_path, file_type, status)
       VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING id
-    `, ['test-fix-sequence.txt', 'test-fix-sequence.txt', 0, null, 'test', 'completed']);
+    `, ['test-fix-sequence.txt', 'test-fix-sequence.txt', 0, '/uploads/test-fix-sequence.txt', 'test', 'completed']);
     
     const testId = testInsert.rows[0].id;
     console.log(`✅ Test insert successful with ID: ${testId}`);
