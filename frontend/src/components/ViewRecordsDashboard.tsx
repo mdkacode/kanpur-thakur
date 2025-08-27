@@ -33,6 +33,7 @@ const ViewRecordsDashboard: React.FC = () => {
     race_ethnicity_white: [] as string[],
     race_ethnicity_black: [] as string[],
     race_ethnicity_hispanic: [] as string[],
+    pc_income: [] as string[],
     mhhi_min: '',
     mhhi_max: '',
     avg_hhi_min: '',
@@ -100,6 +101,7 @@ const ViewRecordsDashboard: React.FC = () => {
   const [allRaceWhiteValues, setAllRaceWhiteValues] = useState<string[]>([]);
   const [allRaceBlackValues, setAllRaceBlackValues] = useState<string[]>([]);
   const [allRaceHispanicValues, setAllRaceHispanicValues] = useState<string[]>([]);
+  const [allPcIncomeValues, setAllPcIncomeValues] = useState<string[]>([]);
 
   const { isAuthenticated } = useAuth();
   const { isDarkMode } = useTheme();
@@ -212,6 +214,13 @@ const ViewRecordsDashboard: React.FC = () => {
         const raceHispanicValues = raceHispanicResponse.data.data || [];
         setAllRaceHispanicValues(raceHispanicValues);
         console.log(`✅ Loaded ${raceHispanicValues.length} unique Hispanic population values for filters`);
+      }
+
+      const pcIncomeResponse = await apiClient.get('/demographic/records/unique/pc_income?limit=1000');
+      if (pcIncomeResponse.data.success) {
+        const pcIncomeValues = pcIncomeResponse.data.data || [];
+        setAllPcIncomeValues(pcIncomeValues);
+        console.log(`✅ Loaded ${pcIncomeValues.length} unique Per Capita Income values for filters`);
       }
           } catch (error: any) {
         console.error('Error loading unique values for filters:', error);
@@ -519,6 +528,7 @@ const ViewRecordsDashboard: React.FC = () => {
       race_ethnicity_white: [],
       race_ethnicity_black: [],
       race_ethnicity_hispanic: [],
+      pc_income: [],
       mhhi_min: '',
       mhhi_max: '',
       avg_hhi_min: '',
@@ -590,6 +600,7 @@ const ViewRecordsDashboard: React.FC = () => {
       if (advancedFilters.race_ethnicity_white?.length > 0) allFilters.race_ethnicity_white = advancedFilters.race_ethnicity_white.join(',');
       if (advancedFilters.race_ethnicity_black?.length > 0) allFilters.race_ethnicity_black = advancedFilters.race_ethnicity_black.join(',');
       if (advancedFilters.race_ethnicity_hispanic?.length > 0) allFilters.race_ethnicity_hispanic = advancedFilters.race_ethnicity_hispanic.join(',');
+      if (advancedFilters.pc_income?.length > 0) allFilters.pc_income = advancedFilters.pc_income.join(',');
       
       // Advanced filters - only include if they have values
       if (advancedFilters.mhhi_min?.trim()) allFilters.mhhi_min = advancedFilters.mhhi_min.trim();
@@ -672,6 +683,7 @@ const ViewRecordsDashboard: React.FC = () => {
         race_ethnicity_white: config.race_ethnicity_white ? (Array.isArray(config.race_ethnicity_white) ? config.race_ethnicity_white : config.race_ethnicity_white.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : [],
         race_ethnicity_black: config.race_ethnicity_black ? (Array.isArray(config.race_ethnicity_black) ? config.race_ethnicity_black : config.race_ethnicity_black.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : [],
         race_ethnicity_hispanic: config.race_ethnicity_hispanic ? (Array.isArray(config.race_ethnicity_hispanic) ? config.race_ethnicity_hispanic : config.race_ethnicity_hispanic.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : [],
+        pc_income: config.pc_income ? (Array.isArray(config.pc_income) ? config.pc_income : config.pc_income.split(',').map((s: string) => s.trim()).filter((s: string) => s)) : [],
         mhhi_min: config.mhhi_min || '',
         mhhi_max: config.mhhi_max || '',
         avg_hhi_min: config.avg_hhi_min || '',
@@ -1068,6 +1080,7 @@ const ViewRecordsDashboard: React.FC = () => {
     const newRaceWhiteFilter: string[] = [];
     const newRaceBlackFilter: string[] = [];
     const newRaceHispanicFilter: string[] = [];
+    const newPcIncomeFilter: string[] = [];
 
     if (filters.zip_code) {
       newZipcodeFilter.push(...filters.zip_code);
@@ -1105,6 +1118,9 @@ const ViewRecordsDashboard: React.FC = () => {
     if (filters.race_ethnicity_hispanic) {
       newRaceHispanicFilter.push(...filters.race_ethnicity_hispanic);
     }
+    if (filters.pc_income) {
+      newPcIncomeFilter.push(...filters.pc_income);
+    }
 
     // Update state with new filters
     setZipcodeFilter(newZipcodeFilter);
@@ -1122,7 +1138,8 @@ const ViewRecordsDashboard: React.FC = () => {
       households: newHouseholdsFilter,
       race_ethnicity_white: newRaceWhiteFilter,
       race_ethnicity_black: newRaceBlackFilter,
-      race_ethnicity_hispanic: newRaceHispanicFilter
+      race_ethnicity_hispanic: newRaceHispanicFilter,
+      pc_income: newPcIncomeFilter
     }));
 
     console.log('🔍 Applied filters - Zipcodes:', newZipcodeFilter, 'States:', newStateFilter, 'Counties:', newCountyFilter, 'Cities:', newCityFilter, 'Timezones:', newTimezoneFilter);
@@ -2295,7 +2312,7 @@ const ViewRecordsDashboard: React.FC = () => {
                 dataIndex: 'zip_code',
                 key: 'zip_code',
                 width: 120,
-                fixed: 'left',
+                fixed: 'left' as const,
                 sorter: (a: DemographicRecord, b: DemographicRecord) => a.zip_code.localeCompare(b.zip_code),
                 render: (text: string) => (
                   <Tag color="blue" style={{ fontWeight: 'bold' }}>
@@ -2308,6 +2325,7 @@ const ViewRecordsDashboard: React.FC = () => {
                 })),
                 filteredValue: zipcodeFilter,
                 filterSearch: true,
+
               },
               {
                 title: 'State',
@@ -2321,6 +2339,7 @@ const ViewRecordsDashboard: React.FC = () => {
                 })),
                 filteredValue: stateFilter,
                 filterSearch: true,
+
               },
               {
                 title: 'County',
@@ -2334,6 +2353,7 @@ const ViewRecordsDashboard: React.FC = () => {
                 })),
                 filteredValue: advancedFilters.county,
                 filterSearch: true,
+
               },
               {
                 title: 'City',
@@ -2347,6 +2367,7 @@ const ViewRecordsDashboard: React.FC = () => {
                 })),
                 filteredValue: advancedFilters.city,
                 filterSearch: true,
+
               },
               {
                 title: 'Timezone',
@@ -2395,6 +2416,7 @@ const ViewRecordsDashboard: React.FC = () => {
                 })),
                 filteredValue: advancedFilters.timezone,
                 filterSearch: true,
+
               },
               {
                 title: 'Median HHI',
@@ -2412,6 +2434,19 @@ const ViewRecordsDashboard: React.FC = () => {
                 })),
                 filteredValue: advancedFilters.mhhi,
                 filterSearch: true,
+                render: (value: number | string) => formatCurrency(value),
+
+              },
+              {
+                title: 'Median HHI MOE',
+                dataIndex: 'mhhi_moe',
+                key: 'mhhi_moe',
+                width: 120,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => {
+                  const aVal = typeof a.mhhi_moe === 'number' ? a.mhhi_moe : parseFloat(a.mhhi_moe || '0');
+                  const bVal = typeof b.mhhi_moe === 'number' ? b.mhhi_moe : parseFloat(b.mhhi_moe || '0');
+                  return aVal - bVal;
+                },
                 render: (value: number | string) => formatCurrency(value),
               },
               {
@@ -2431,6 +2466,49 @@ const ViewRecordsDashboard: React.FC = () => {
                 filteredValue: advancedFilters.avg_hhi,
                 filterSearch: true,
                 render: (value: number | string) => formatCurrency(value),
+
+              },
+              {
+                title: 'Avg HHI MOE',
+                dataIndex: 'avg_hhi_moe',
+                key: 'avg_hhi_moe',
+                width: 120,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => {
+                  const aVal = typeof a.avg_hhi_moe === 'number' ? a.avg_hhi_moe : parseFloat(a.avg_hhi_moe || '0');
+                  const bVal = typeof b.avg_hhi_moe === 'number' ? b.avg_hhi_moe : parseFloat(b.avg_hhi_moe || '0');
+                  return aVal - bVal;
+                },
+                render: (value: number | string) => formatCurrency(value),
+              },
+              {
+                title: 'Per Capita Income',
+                dataIndex: 'pc_income',
+                key: 'pc_income',
+                width: 120,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => {
+                  const aVal = typeof a.pc_income === 'number' ? a.pc_income : parseFloat(a.pc_income || '0');
+                  const bVal = typeof b.pc_income === 'number' ? b.pc_income : parseFloat(b.pc_income || '0');
+                  return aVal - bVal;
+                },
+                filters: allPcIncomeValues.map(value => ({
+                  text: formatCurrency(value),
+                  value: value.toString(),
+                })),
+                filteredValue: advancedFilters.pc_income,
+                filterSearch: true,
+                render: (value: number | string) => formatCurrency(value),
+              },
+              {
+                title: 'Per Capita MOE',
+                dataIndex: 'pc_income_moe',
+                key: 'pc_income_moe',
+                width: 120,
+                sorter: (a: DemographicRecord, b: DemographicRecord) => {
+                  const aVal = typeof a.pc_income_moe === 'number' ? a.pc_income_moe : parseFloat(a.pc_income_moe || '0');
+                  const bVal = typeof b.pc_income_moe === 'number' ? b.pc_income_moe : parseFloat(b.pc_income_moe || '0');
+                  return aVal - bVal;
+                },
+                render: (value: number | string) => formatCurrency(value),
               },
               {
                 title: 'Median Age',
@@ -2448,6 +2526,7 @@ const ViewRecordsDashboard: React.FC = () => {
                 })),
                 filteredValue: advancedFilters.median_age,
                 filterSearch: true,
+
               },
               {
                 title: 'Households',
@@ -2466,6 +2545,7 @@ const ViewRecordsDashboard: React.FC = () => {
                 filteredValue: advancedFilters.households,
                 filterSearch: true,
                 render: (value: number | string) => formatNumber(value),
+
               },
               {
                 title: 'White %',
@@ -2484,6 +2564,7 @@ const ViewRecordsDashboard: React.FC = () => {
                 filteredValue: advancedFilters.race_ethnicity_white,
                 filterSearch: true,
                 render: (value: number | string) => formatNumber(value),
+
               },
               {
                 title: 'Black %',
@@ -2502,6 +2583,7 @@ const ViewRecordsDashboard: React.FC = () => {
                 filteredValue: advancedFilters.race_ethnicity_black,
                 filterSearch: true,
                 render: (value: number | string) => formatNumber(value),
+
               },
               {
                 title: 'Hispanic %',
@@ -2520,6 +2602,7 @@ const ViewRecordsDashboard: React.FC = () => {
                 filteredValue: advancedFilters.race_ethnicity_hispanic,
                 filterSearch: true,
                 render: (value: number | string) => formatNumber(value),
+
               },
               {
                 title: 'Actions',

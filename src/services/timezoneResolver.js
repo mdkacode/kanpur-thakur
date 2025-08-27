@@ -142,7 +142,24 @@ class TimezoneResolver {
      */
     async findExactMatch(stateCode, city, zipcode) {
         try {
-            const result = await db.query(`
+            // First try demographic_records table
+            let result = await db.query(`
+                SELECT DISTINCT t.id, t.timezone_name, t.display_name, t.abbreviation_standard
+                FROM demographic_records dr
+                JOIN timezones t ON dr.timezone_id = t.id
+                WHERE dr.state_code = $1 
+                AND LOWER(dr.city) = LOWER($2) 
+                AND dr.zip_code = $3
+                AND dr.timezone_id IS NOT NULL
+                LIMIT 1
+            `, [stateCode, city, zipcode]);
+            
+            if (result.rows[0]) {
+                return result.rows[0];
+            }
+            
+            // Fallback to records table
+            result = await db.query(`
                 SELECT DISTINCT t.id, t.timezone_name, t.display_name, t.abbreviation_standard
                 FROM records r
                 JOIN timezones t ON r.timezone_id = t.id
@@ -165,7 +182,23 @@ class TimezoneResolver {
      */
     async findCityMatch(stateCode, city) {
         try {
-            const result = await db.query(`
+            // First try demographic_records table
+            let result = await db.query(`
+                SELECT DISTINCT t.id, t.timezone_name, t.display_name, t.abbreviation_standard
+                FROM demographic_records dr
+                JOIN timezones t ON dr.timezone_id = t.id
+                WHERE dr.state_code = $1 
+                AND LOWER(dr.city) = LOWER($2)
+                AND dr.timezone_id IS NOT NULL
+                LIMIT 1
+            `, [stateCode, city]);
+            
+            if (result.rows[0]) {
+                return result.rows[0];
+            }
+            
+            // Fallback to records table
+            result = await db.query(`
                 SELECT DISTINCT t.id, t.timezone_name, t.display_name, t.abbreviation_standard
                 FROM records r
                 JOIN timezones t ON r.timezone_id = t.id

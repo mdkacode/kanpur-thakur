@@ -80,7 +80,7 @@ class DemographicFileProcessor {
 
   async parseCSV(filePath) {
     return new Promise((resolve, reject) => {
-      const records = [];
+      const rawRows = [];
       let headers = [];
       let isFirstRow = true;
 
@@ -95,13 +95,21 @@ class DemographicFileProcessor {
             isFirstRow = false;
           }
           
-          const record = this.parseCSVRow(row, headers);
-          if (record) {
-            records.push(record);
-          }
+          rawRows.push(row);
         })
-        .on('end', () => {
-          console.log(`🔍 CSV parsing completed. Found ${headers.length} columns and ${records.length} records`);
+        .on('end', async () => {
+          console.log(`🔍 CSV parsing completed. Found ${headers.length} columns and ${rawRows.length} raw rows`);
+          
+          // Process all rows with timezone resolution
+          const records = [];
+          for (const row of rawRows) {
+            const record = await this.parseCSVRow(row, headers);
+            if (record) {
+              records.push(record);
+            }
+          }
+          
+          console.log(`🔍 Processed ${records.length} valid records`);
           
           // Check if we have any records with zipcodes
           const recordsWithZipcodes = records.filter(r => r && r.zip_code);
@@ -119,7 +127,7 @@ class DemographicFileProcessor {
     });
   }
 
-  parseCSVRow(row, headers) {
+  async parseCSVRow(row, headers) {
     try {
       // Create a dynamic record object that maps CSV columns to database fields
       const record = {};
@@ -127,6 +135,33 @@ class DemographicFileProcessor {
       // Dynamically map all columns
       headers.forEach(header => {
         record[header] = row[header] || '';
+      });
+      
+      // Map required fields with proper column name handling
+      const fieldMappings = {
+        'name': ['name', 'zip', 'zipcode', 'zip_code', 'postal_code', 'postalcode'],
+        'state': ['state', 'state_name', 'state_name_full'],
+        'county': ['county', 'county_name'],
+        'city': ['city', 'city_name'],
+        'mhhi': ['mhhi', 'median_household_income'],
+        'mhhi_moe': ['mhhi_moe', 'median_household_income_moe'],
+        'avg_hhi': ['avg_hhi', 'average_household_income'],
+        'avg_hhi_moe': ['avg_hhi_moe', 'average_household_income_moe'],
+        'pc_income': ['pc_income', 'per_capita_income'],
+        'pc_income_moe': ['pc_income_moe', 'per_capita_income_moe']
+      };
+      
+      // Apply field mappings
+      Object.entries(fieldMappings).forEach(([targetField, sourceFields]) => {
+        if (!record[targetField]) {
+          for (const sourceField of sourceFields) {
+            if (record[sourceField] && record[sourceField].toString().trim() !== '') {
+              record[targetField] = record[sourceField].toString().trim();
+              console.log(`🔍 Mapped ${sourceField} to ${targetField}: ${record[targetField]}`);
+              break;
+            }
+          }
+        }
       });
       
       // Handle zip_code mapping - check multiple possible column names
@@ -165,6 +200,41 @@ class DemographicFileProcessor {
       if (!record.zip_code || record.zip_code.toString().trim() === '') {
         console.warn('Row missing zip_code, skipping:', row);
         return null;
+      }
+
+      // Set state_code from state if not present
+      if (!record.state_code && record.state) {
+        const stateNameToCode = {
+          'ALABAMA': 'AL', 'ALASKA': 'AK', 'ARIZONA': 'AZ', 'ARKANSAS': 'AR', 'CALIFORNIA': 'CA',
+          'COLORADO': 'CO', 'CONNECTICUT': 'CT', 'DELAWARE': 'DE', 'FLORIDA': 'FL', 'GEORGIA': 'GA',
+          'HAWAII': 'HI', 'IDAHO': 'ID', 'ILLINOIS': 'IL', 'INDIANA': 'IN', 'IOWA': 'IA',
+          'KANSAS': 'KS', 'KENTUCKY': 'KY', 'LOUISIANA': 'LA', 'MAINE': 'ME', 'MARYLAND': 'MD',
+          'MASSACHUSETTS': 'MA', 'MICHIGAN': 'MI', 'MINNESOTA': 'MN', 'MISSISSIPPI': 'MS', 'MISSOURI': 'MO',
+          'MONTANA': 'MT', 'NEBRASKA': 'NE', 'NEVADA': 'NV', 'NEW HAMPSHIRE': 'NH', 'NEW JERSEY': 'NJ',
+          'NEW MEXICO': 'NM', 'NEW YORK': 'NY', 'NORTH CAROLINA': 'NC', 'NORTH DAKOTA': 'ND', 'OHIO': 'OH',
+          'OKLAHOMA': 'OK', 'OREGON': 'OR', 'PENNSYLVANIA': 'PA', 'RHODE ISLAND': 'RI', 'SOUTH CAROLINA': 'SC',
+          'SOUTH DAKOTA': 'SD', 'TENNESSEE': 'TN', 'TEXAS': 'TX', 'UTAH': 'UT', 'VERMONT': 'VT',
+          'VIRGINIA': 'VA', 'WASHINGTON': 'WA', 'WEST VIRGINIA': 'WV', 'WISCONSIN': 'WI', 'WYOMING': 'WY'
+        };
+        
+        const stateUpper = record.state.toString().toUpperCase().trim();
+        record.state_code = stateNameToCode[stateUpper] || record.state;
+        console.log(`🔍 Mapped state "${record.state}" to state_code: "${record.state_code}"`);
+      }
+
+      // Resolve timezone for the record
+      try {
+        const timezoneInfo = await timezoneResolver.resolveTimezone(record);
+        if (timezoneInfo && timezoneInfo.id) {
+          record.timezone_id = timezoneInfo.id;
+          console.log(`🔍 Resolved timezone_id: ${record.timezone_id} for zip_code: ${record.zip_code}`);
+        } else {
+          console.warn(`⚠️ Could not resolve timezone for zip_code: ${record.zip_code}`);
+          record.timezone_id = null;
+        }
+      } catch (timezoneError) {
+        console.error(`❌ Error resolving timezone for zip_code ${record.zip_code}:`, timezoneError);
+        record.timezone_id = null;
       }
 
       // Debug: Log the first few records

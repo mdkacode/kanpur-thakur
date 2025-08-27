@@ -24,10 +24,13 @@ router.get('/numbers/job/:job_id', PhoneNumberController.getPhoneNumbersForJob);
 router.get('/numbers/run/:run_id', PhoneNumberController.getPhoneNumbersForRun);
 router.get('/numbers/zip/:zip', PhoneNumberController.getPhoneNumbersForZip);
 router.get('/numbers/filter/:filter_id', PhoneNumberController.getPhoneNumbersForFilter);
+router.get('/numbers', PhoneNumberController.getPhoneNumbersWithFilters);
+router.get('/numbers/unique/:field', PhoneNumberController.getUniqueValues);
 
 // Export and management endpoints
 router.get('/export/csv/:job_id', PhoneNumberController.exportToCSV);
 router.get('/export/filter/:filter_id', PhoneNumberController.exportFilterToCSV);
+router.get('/export/csv', PhoneNumberController.exportFilteredToCSV);
 router.get('/stats', PhoneNumberController.getStats);
 
 // Dashboard endpoints

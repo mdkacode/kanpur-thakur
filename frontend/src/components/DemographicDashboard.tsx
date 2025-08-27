@@ -8,11 +8,11 @@ import DemographicDemo from './DemographicDemo';
 type TabType = 'upload' | 'history' | 'records' | 'demo';
 
 const DemographicDashboard: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabType>('demo');
+  const [activeTab, setActiveTab] = useState<TabType>('upload');
   const { isDarkMode } = useTheme();
 
   const tabs = [
-    { id: 'demo', label: 'Demo Guide', icon: '🚀' },
+  
     { id: 'upload', label: 'Upload Data', icon: '📤' },
     { id: 'history', label: 'Upload History', icon: '📋' },
     { id: 'records', label: 'View Records', icon: '🔍' },

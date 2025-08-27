@@ -86,6 +86,7 @@ class TelecareProcessor {
   async runPythonScript(inputCsvPath, zipcode) {
     let tempInputPath = null;
     let tempScriptPath = null;
+    let outputFilePath = null;
     
     try {
       console.log('Running Python script...');
@@ -103,19 +104,19 @@ class TelecareProcessor {
       
       await fs.writeFile(tempInputPath, inputCsvPath);
       
-      // Modify the Python script to use our input file
+      // Modify the script to use our input file and output file
       const scriptContent = await fs.readFile(this.scriptPath, 'utf8');
-      const modifiedScript = scriptContent.replace(
-        'CSV_PATH = os.path.join(os.getcwd(), "sample_input.csv")',
-        `CSV_PATH = "${tempInputPath.replace(/\\/g, '/')}"`
-      );
+      const modifiedScript = scriptContent
+        .replace('CSV_PATH = os.path.join(os.getcwd(), "sample_input.csv")', `CSV_PATH = "${tempInputPath.replace(/\\/g, '/')}"`)
+        .replace('OUTPUT_FILE = os.path.join(DOWNLOAD_DIR, "telcodata_bulk_output.csv")', `OUTPUT_FILE = "${outputFilePath.replace(/\\/g, '/')}"`);
       
       await fs.writeFile(tempScriptPath, modifiedScript);
 
       // Run the Python script
+      outputFilePath = path.join(__dirname, '..', '..', `temp_output_${tempPrefix}.csv`);
       const result = await this.runCommand(this.pythonPath, [tempScriptPath]);
       
-      return result;
+      return { ...result, outputFilePath };
     } catch (error) {
       console.error('Error running Python script:', error);
       throw error;
@@ -123,6 +124,7 @@ class TelecareProcessor {
       // Clean up temporary files in finally block with error handling
       await this.cleanupTempFile(tempInputPath);
       await this.cleanupTempFile(tempScriptPath);
+      await this.cleanupTempFile(outputFilePath);
     }
   }
 
@@ -264,21 +266,26 @@ class TelecareProcessor {
           throw new Error(`Python script ChromeDriver error: ${pythonResult.stderr.split('\n')[0]}`);
         }
         
-        // Check if we have output from Python script
-        if (!pythonResult.stdout || !pythonResult.stdout.trim()) {
-          throw new Error('No output received from Python script - this may be due to ChromeDriver/Selenium configuration issues');
+        // Check if output file was created
+        let outputContent = '';
+        try {
+          outputContent = await fs.readFile(pythonResult.outputFilePath, 'utf8');
+          console.log(`Output file created: ${pythonResult.outputFilePath}`);
+        } catch (fileError) {
+          // Check if stdout contains error message
+          if (pythonResult.stdout && pythonResult.stdout.trim().startsWith('ERROR:')) {
+            throw new Error(`Python script error: ${pythonResult.stdout.trim()}`);
+          }
+          throw new Error('No output file created by Python script - this may be due to ChromeDriver/Selenium configuration issues');
         }
         
         // Parse output CSV
         console.log('Parsing output CSV...');
-        const outputRows = await this.parseOutputCSV(pythonResult.stdout);
+        const outputRows = await this.parseOutputCSV(outputContent);
         
-        // Store output CSV file (if available)
-        let outputFileResult = null;
-        if (pythonResult.stdout && pythonResult.stdout.trim()) {
-          console.log('Storing output CSV file...');
-          outputFileResult = await fileStorageService.storeOutputFile(zipcode, run.id, pythonResult.stdout, outputCsvName);
-        }
+        // Store output CSV file
+        console.log('Storing output CSV file...');
+        const outputFileResult = await fileStorageService.storeOutputFile(zipcode, run.id, outputContent, outputCsvName);
         
         // Save output rows to database
         console.log('Saving output rows to database...');

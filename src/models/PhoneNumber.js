@@ -554,6 +554,161 @@ class PhoneNumber {
       throw error;
     }
   }
+
+  // Get phone numbers with filters
+  static async getPhoneNumbersWithFilters(page = 1, limit = 50, search, sortBy = 'created_at', sortOrder = 'DESC', filters = {}) {
+    try {
+      const offset = (page - 1) * limit;
+      
+      let query = `
+        SELECT pn.*, t.display_name as timezone_display_name
+        FROM phone_numbers pn
+        LEFT JOIN timezones t ON pn.timezone_id = t.id
+        WHERE 1=1
+      `;
+      
+      let countQuery = `
+        SELECT COUNT(*) as count
+        FROM phone_numbers pn
+        LEFT JOIN timezones t ON pn.timezone_id = t.id
+        WHERE 1=1
+      `;
+      
+      const values = [];
+      let valueIndex = 1;
+
+      // Add search condition
+      if (search) {
+        const searchCondition = `(
+          pn.full_phone_number ILIKE $${valueIndex} OR
+          pn.npa ILIKE $${valueIndex} OR
+          pn.nxx ILIKE $${valueIndex} OR
+          pn.zip ILIKE $${valueIndex} OR
+          pn.state_code ILIKE $${valueIndex}
+        )`;
+        query += ` AND ${searchCondition}`;
+        countQuery += ` AND ${searchCondition}`;
+        values.push(`%${search}%`);
+        valueIndex++;
+      }
+
+      // Add filters
+      if (filters.npa) {
+        query += ` AND pn.npa = $${valueIndex}`;
+        countQuery += ` AND pn.npa = $${valueIndex}`;
+        values.push(filters.npa);
+        valueIndex++;
+      }
+
+      if (filters.nxx) {
+        query += ` AND pn.nxx = $${valueIndex}`;
+        countQuery += ` AND pn.nxx = $${valueIndex}`;
+        values.push(filters.nxx);
+        valueIndex++;
+      }
+
+      if (filters.thousands) {
+        query += ` AND pn.thousands = $${valueIndex}`;
+        countQuery += ` AND pn.thousands = $${valueIndex}`;
+        values.push(filters.thousands);
+        valueIndex++;
+      }
+
+      if (filters.state_code) {
+        query += ` AND pn.state_code = $${valueIndex}`;
+        countQuery += ` AND pn.state_code = $${valueIndex}`;
+        values.push(filters.state_code);
+        valueIndex++;
+      }
+
+      if (filters.zip) {
+        query += ` AND pn.zip = $${valueIndex}`;
+        countQuery += ` AND pn.zip = $${valueIndex}`;
+        values.push(filters.zip);
+        valueIndex++;
+      }
+
+      if (filters.timezone_id) {
+        query += ` AND pn.timezone_id = $${valueIndex}`;
+        countQuery += ` AND pn.timezone_id = $${valueIndex}`;
+        values.push(filters.timezone_id);
+        valueIndex++;
+      }
+
+      // Add sorting
+      const allowedSortFields = ['created_at', 'full_phone_number', 'npa', 'nxx', 'thousands', 'state_code', 'zip'];
+      const sortField = allowedSortFields.includes(sortBy) ? sortBy : 'created_at';
+      const sortDirection = sortOrder.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+      
+      query += ` ORDER BY pn.${sortField} ${sortDirection}`;
+      query += ` LIMIT $${valueIndex++} OFFSET $${valueIndex++}`;
+      values.push(limit, offset);
+
+      const [result, countResult] = await Promise.all([
+        db.query(query, values),
+        db.query(countQuery, values.slice(0, -2)) // Remove limit and offset for count
+      ]);
+
+      return {
+        phoneNumbers: result.rows,
+        pagination: {
+          total: parseInt(countResult.rows[0].count),
+          page,
+          limit,
+          totalPages: Math.ceil(parseInt(countResult.rows[0].count) / limit)
+        },
+        filters
+      };
+    } catch (error) {
+      console.error('Error getting phone numbers with filters:', error);
+      throw error;
+    }
+  }
+
+  // Get unique values for a field
+  static async getUniqueValues(field, limit = 1000) {
+    try {
+      const allowedFields = ['npa', 'nxx', 'thousands', 'state_code', 'zip', 'timezone_id'];
+      
+      if (!allowedFields.includes(field)) {
+        throw new Error(`Invalid field: ${field}. Allowed fields: ${allowedFields.join(', ')}`);
+      }
+
+      let query;
+      if (field === 'timezone_id') {
+        query = `
+          SELECT DISTINCT pn.timezone_id, t.display_name as timezone_display_name
+          FROM phone_numbers pn
+          LEFT JOIN timezones t ON pn.timezone_id = t.id
+          WHERE pn.timezone_id IS NOT NULL
+          ORDER BY t.display_name
+          LIMIT $1
+        `;
+      } else {
+        query = `
+          SELECT DISTINCT ${field}
+          FROM phone_numbers
+          WHERE ${field} IS NOT NULL AND ${field} != ''
+          ORDER BY ${field}
+          LIMIT $1
+        `;
+      }
+
+      const result = await db.query(query, [limit]);
+      
+      if (field === 'timezone_id') {
+        return result.rows.map(row => ({
+          value: row.timezone_id,
+          label: row.timezone_display_name || `Timezone ${row.timezone_id}`
+        }));
+      } else {
+        return result.rows.map(row => row[field]);
+      }
+    } catch (error) {
+      console.error('Error getting unique values:', error);
+      throw error;
+    }
+  }
 }
 
 module.exports = PhoneNumber;

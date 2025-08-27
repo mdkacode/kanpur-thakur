@@ -28,6 +28,7 @@ import UploadHistory from './UploadHistory';
 import States from './States';
 import DemographicDashboard from './DemographicDashboard';
 import ComprehensiveDashboard from './ComprehensiveDashboard';
+import ComprehensiveDashboardWithTabs from './ComprehensiveDashboardWithTabs';
 import ViewRecordsDashboard from './ViewRecordsDashboard';
 import PhoneNumberDashboard from './PhoneNumberDashboard';
 
@@ -154,7 +155,7 @@ const MainApp: React.FC = () => {
         <Route path="/states" element={<States />} />
         <Route path="/history" element={<UploadHistory />} />
         <Route path="/demographic" element={<DemographicDashboard />} />
-        <Route path="/comprehensive" element={<ComprehensiveDashboard />} />
+        <Route path="/comprehensive" element={<ComprehensiveDashboardWithTabs />} />
         <Route path="/phone-dashboard" element={<PhoneNumberDashboard refreshTrigger={refreshTrigger} />} />
         <Route path="*" element={<Dashboard />} />
       </Routes>

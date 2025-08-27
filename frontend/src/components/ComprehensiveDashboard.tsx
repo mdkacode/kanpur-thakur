@@ -9,6 +9,7 @@ import * as phoneNumberApi from '../api/phoneNumberApi';
 import { PhoneNumberJob, PhoneNumber } from '../api/phoneNumberApi';
 import FileViewerModal from './FileViewerModal';
 import PhoneGenerationModal from './PhoneGenerationModal';
+import ProcessingSessionsTab from './ProcessingSessionsTab';
 
 interface NpaNxxRecord {
   id: number;
@@ -73,7 +74,8 @@ const ComprehensiveDashboard: React.FC = () => {
   const [phoneGenerationModalVisible, setPhoneGenerationModalVisible] = useState(false);
   const [appliedFilterConfig, setAppliedFilterConfig] = useState<any>(null);
   const { isAuthenticated } = useAuth();
-  const { isDarkMode } = useTheme();
+const { isDarkMode } = useTheme();
+const { Text } = Typography;
 
   // Load processed zipcodes on component mount
   useEffect(() => {
@@ -96,6 +98,58 @@ const ComprehensiveDashboard: React.FC = () => {
       }
     }
   }, []);
+
+  // Enhanced filter display component
+  const FilterInfoDisplay = ({ filterConfig }: { filterConfig: any }) => {
+    if (!filterConfig) return null;
+
+    const filterItems = [];
+    
+    if (filterConfig.zip_code) {
+      const zipcodes = filterConfig.zip_code.split(',').map((z: string) => z.trim());
+      filterItems.push(
+        <Tag key="zipcodes" color="blue">
+          📍 {zipcodes.length} Zipcodes: {zipcodes.slice(0, 3).join(', ')}{zipcodes.length > 3 ? '...' : ''}
+        </Tag>
+      );
+    }
+    
+    if (filterConfig.timezone) {
+      const timezones = filterConfig.timezone.split(',').map((t: string) => t.trim());
+      filterItems.push(
+        <Tag key="timezones" color="green">
+          🌍 {timezones.length} Timezones: {timezones.slice(0, 3).join(', ')}{timezones.length > 3 ? '...' : ''}
+        </Tag>
+      );
+    }
+    
+    if (filterConfig.state) {
+      const states = filterConfig.state.split(',').map((s: string) => s.trim());
+      filterItems.push(
+        <Tag key="states" color="orange">
+          🏛️ {states.length} States: {states.join(', ')}
+        </Tag>
+      );
+    }
+    
+    if (filterConfig.city) {
+      const cities = filterConfig.city.split(',').map((c: string) => c.trim());
+      filterItems.push(
+        <Tag key="cities" color="purple">
+          🏙️ {cities.length} Cities: {cities.slice(0, 2).join(', ')}{cities.length > 2 ? '...' : ''}
+        </Tag>
+      );
+    }
+
+    return filterItems.length > 0 ? (
+      <div style={{ marginBottom: 16 }}>
+        <Text strong>Applied Filter Criteria:</Text>
+        <div style={{ marginTop: 8 }}>
+          {filterItems}
+        </div>
+      </div>
+    ) : null;
+  };
 
   const loadSavedFilters = async () => {
     setLoadingFilters(true);
@@ -658,8 +712,8 @@ const ComprehensiveDashboard: React.FC = () => {
         try {
           setProcessingStatus(`Generating phone numbers for ${zip}...`);
           
-          // Use the new direct NPA NXX generation (no telecare required)
-          const response = await phoneNumberApi.generateFromNpaNxxRecords(zip);
+          // Use the new direct NPA NXX generation (no telecare required) with filter criteria
+          const response = await phoneNumberApi.generateFromNpaNxxRecords(zip, appliedFilterConfig);
           
           if (response.success) {
             successCount++;
@@ -1199,7 +1253,7 @@ const ComprehensiveDashboard: React.FC = () => {
         </div>
 
         {/* Processed Zipcodes Section */}
-        <div className={`mb-8 p-6 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'}`}>
+        {/* <div className={`mb-8 p-6 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'}`}>
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-bold mb-2 flex items-center">
@@ -1328,183 +1382,9 @@ const ComprehensiveDashboard: React.FC = () => {
               </p>
             </div>
           )}
-        </div>
+        </div> */}
 
-        {/* Phone Number Generation Section */}
-        <div className={`mb-8 p-6 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'}`}>
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold mb-2 flex items-center">
-                <PhoneOutlined className="mr-2" />
-                Phone Number Generation
-              </h2>
-              <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
-                Generate phone numbers from NPA NXX records and link them to filters
-              </p>
-            </div>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={refreshPhoneNumberJobs}
-              loading={loadingPhoneNumberJobs}
-              size="small"
-            >
-              Refresh Jobs
-            </Button>
-          </div>
-
-          {/* CSV Input for Direct Generation */}
-          <div className={`mb-6 p-4 rounded-lg ${isDarkMode ? 'bg-gray-700' : 'bg-gray-50'}`}>
-            <h3 className="text-lg font-semibold mb-3">Generate from CSV (Bypass Telecare)</h3>
-            <p className={`text-sm mb-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-              If you already have the telecare output CSV, you can generate phone numbers directly without running telecare again.
-            </p>
-            
-            <div className="space-y-3">
-              <div>
-                <label className={`block text-sm font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                  Paste CSV Data (NPA, NXX, STATE, etc.)
-                </label>
-                <textarea
-                  id="csvInput"
-                  rows={6}
-                  className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
-                    isDarkMode
-                      ? 'bg-gray-600 border-gray-500 text-white placeholder-gray-400'
-                      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'
-                  }`}
-                  placeholder={`NPA,NXX,THOUSANDS,COMPANY TYPE,OCN,COMPANY,LATA,RATECENTER,CLLI,STATE
-201,202,-,WIRELESS,6630,USA MOBILITY WIRELESS INC.,224,HACKENSACK,WAYNNJ081MD,NJ
-201,203,-,CLEC,325E,YMAX COMMUNICATIONS CORP. - NJ,224,HACKENSACK,NWRKNJMDDSJ,NJ`}
-                />
-              </div>
-              
-              <div className="flex items-center gap-3">
-                <Button
-                  type="primary"
-                  icon={<PhoneOutlined />}
-                  onClick={() => {
-                    const csvData = (document.getElementById('csvInput') as HTMLTextAreaElement)?.value;
-                    if (csvData) {
-                      handleGenerateFromCSV(csvData);
-                    } else {
-                      message.error('Please paste CSV data first');
-                    }
-                  }}
-                  loading={processing}
-                  disabled={processing}
-                >
-                  Generate from CSV
-                </Button>
-                
-                <Button
-                  onClick={() => {
-                    const csvInput = document.getElementById('csvInput') as HTMLTextAreaElement;
-                    if (csvInput) {
-                      csvInput.value = '';
-                      message.success('CSV input cleared');
-                    }
-                  }}
-                >
-                  Clear CSV
-                </Button>
-              </div>
-              
-              <div className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                💡 <strong>Required columns:</strong> NPA (3 digits), NXX (3 digits), THOUSANDS (0-9 or "-"), STATE (2 chars). <strong>Optional:</strong> COMPANY TYPE, COMPANY, RATECENTER
-              </div>
-              <div className={`text-xs mt-1 ${isDarkMode ? 'text-yellow-400' : 'text-yellow-600'}`}>
-                ⚠️ <strong>Validation:</strong> Rows missing any required field will be skipped gracefully. Only valid records generate phone numbers.
-              </div>
-              <div className={`text-xs mt-1 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`}>
-                🚫 <strong>Duplicate Prevention:</strong> Phone numbers already in database are automatically skipped.
-              </div>
-            </div>
-          </div>
-
-          {loadingPhoneNumberJobs ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-              <p className={isDarkMode ? 'text-gray-400' : 'text-gray-500'}>Loading phone number jobs...</p>
-            </div>
-          ) : phoneNumberJobs.length > 0 ? (
-            <div className="space-y-4">
-              {phoneNumberJobs.map((job) => (
-                <Card
-                  key={job.job_id}
-                  size="small"
-                  className={`cursor-pointer hover:shadow-md transition-shadow ${
-                    isDarkMode ? 'bg-gray-700 border-gray-600' : 'bg-gray-50 border-gray-200'
-                  }`}
-                  onClick={() => loadPhoneNumberResults(job.job_id)}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-3 h-3 rounded-full ${
-                        job.status === 'completed' ? 'bg-green-500' :
-                        job.status === 'processing' ? 'bg-yellow-500' :
-                        job.status === 'failed' ? 'bg-red-500' :
-                        'bg-gray-500'
-                      }`}></div>
-                      <div>
-                        <div className="font-medium">📱 Job {job.job_id.slice(0, 8)}...</div>
-                        <div className="text-sm text-gray-500">
-                          {job.generated_numbers} / {job.total_numbers} numbers • {new Date(job.created_at).toLocaleDateString()}
-                        </div>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium capitalize">{job.status}</div>
-                      <div className="text-xs text-gray-500">Zip: {job.zip}</div>
-                    </div>
-                  </div>
-                  
-                  {job.status === 'processing' && (
-                    <div className="mt-3">
-                      <Progress
-                        percent={job.total_numbers > 0 ? Math.round((job.generated_numbers / job.total_numbers) * 100) : 0}
-                        size="small"
-                        status="active"
-                      />
-                    </div>
-                  )}
-                  
-                  {job.status === 'completed' && (
-                    <div className="mt-3 flex items-center justify-between">
-                      <span className="text-sm text-green-600">✅ Generation completed</span>
-                      <Button
-                        size="small"
-                        icon={<DownloadOutlined />}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          phoneNumberApi.exportPhoneNumbersToCSV(job.job_id);
-                        }}
-                      >
-                        Download CSV
-                      </Button>
-                    </div>
-                  )}
-                  
-                  {job.status === 'failed' && (
-                    <div className="mt-3">
-                      <div className="text-sm text-red-600">
-                        ❌ Error: {job.error_message || 'Unknown error'}
-                      </div>
-                    </div>
-                  )}
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <PhoneOutlined className="text-4xl text-gray-400 mb-4" />
-              <h3 className="text-lg font-medium mb-2">No Phone Number Jobs Yet</h3>
-              <p className={`text-sm ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                Generate phone numbers from NPA NXX records to see jobs here
-              </p>
-            </div>
-          )}
-        </div>
-
+       
         {/* Phone Number Results Section */}
         {phoneNumberResults.length > 0 && (
           <div className={`mb-8 p-6 rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800 text-white' : 'bg-white text-gray-800'}`}>
@@ -1870,6 +1750,9 @@ const ComprehensiveDashboard: React.FC = () => {
                 </Button>
               </div>
             </div>
+
+            {/* Filter Info Display */}
+            <FilterInfoDisplay filterConfig={appliedFilterConfig} />
 
             {/* Results Table */}
             <div className={`overflow-hidden rounded-lg shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>

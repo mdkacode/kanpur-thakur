@@ -9,8 +9,6 @@ export interface Timezone {
   utc_offset_standard: number;
   utc_offset_daylight?: number;
   observes_dst: boolean;
-  description?: string;
-  states: string[];
   created_at: string;
   updated_at: string;
 }
@@ -22,7 +20,6 @@ export interface TimezoneOption {
   timezone_name: string;
   display_name: string;
   abbreviation: string;
-  states: string[];
 }
 
 export interface CurrentTimeInfo {

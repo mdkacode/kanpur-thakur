@@ -46,16 +46,25 @@ const PhoneGenerationModal: React.FC<PhoneGenerationModalProps> = ({
 
   useEffect(() => {
     if (visible) {
-      // Prepare preview data
+      // Prepare preview data with enhanced filter information
+      const filterInfo = {
+        zipcodes: sourceZipcodes.length,
+        timezones: initialFilters?.timezone ? initialFilters.timezone.split(',').length : 0,
+        states: initialFilters?.state ? initialFilters.state.split(',').length : 0,
+        cities: initialFilters?.city ? initialFilters.city.split(',').length : 0
+      };
+      
       setPreviewData({
         sourceZipcodes,
         filterCriteria: initialFilters,
+        filterInfo,
         estimatedRecords: npaRecordsCount
       });
 
-      // Auto-populate generation name
+      // Auto-populate generation name with filter info
       const timestamp = new Date().toLocaleDateString();
-      const defaultName = `Phone Numbers ${sourceZipcodes.slice(0, 3).join(', ')}${sourceZipcodes.length > 3 ? '...' : ''} - ${timestamp}`;
+      const filterSuffix = filterInfo.timezones > 0 ? ` + ${filterInfo.timezones} timezones` : '';
+      const defaultName = `Phone Numbers ${sourceZipcodes.slice(0, 3).join(', ')}${sourceZipcodes.length > 3 ? '...' : ''}${filterSuffix} - ${timestamp}`;
       form.setFieldsValue({
         generation_name: defaultName,
         user_name: 'Current User'
@@ -189,6 +198,22 @@ const PhoneGenerationModal: React.FC<PhoneGenerationModalProps> = ({
                 {formatFilterCriteria(initialFilters)}
               </Text>
             </div>
+            {previewData?.filterInfo && (
+              <div style={{ marginTop: '8px' }}>
+                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                  <Tag color="blue">📍 {previewData.filterInfo.zipcodes} Zipcodes</Tag>
+                  {previewData.filterInfo.timezones > 0 && (
+                    <Tag color="green">🌍 {previewData.filterInfo.timezones} Timezones</Tag>
+                  )}
+                  {previewData.filterInfo.states > 0 && (
+                    <Tag color="orange">🏛️ {previewData.filterInfo.states} States</Tag>
+                  )}
+                  {previewData.filterInfo.cities > 0 && (
+                    <Tag color="purple">🏙️ {previewData.filterInfo.cities} Cities</Tag>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div style={{ marginBottom: '12px' }}>

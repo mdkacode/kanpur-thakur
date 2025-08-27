@@ -84,8 +84,11 @@ export const generateFromCSV = async (csvData: string, zip: string, filterId?: n
 };
 
 // Generate phone numbers directly from NPA NXX records (NO TELECARE REQUIRED)
-export const generateFromNpaNxxRecords = async (zip: string, filterId?: number) => {
-  const response = await apiClient.post('/phone-numbers/generate/npa-nxx', { zip, filter_id: filterId });
+export const generateFromNpaNxxRecords = async (zip: string, filterCriteria?: any) => {
+  const response = await apiClient.post('/phone-numbers/generate/npa-nxx', { 
+    zip, 
+    filter_criteria: filterCriteria 
+  });
   return response.data;
 };
 

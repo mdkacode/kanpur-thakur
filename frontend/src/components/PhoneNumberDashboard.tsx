@@ -18,7 +18,8 @@ import {
   Tooltip,
   Popconfirm,
   Divider,
-  Progress
+  Progress,
+  Tabs
 } from 'antd';
 import {
   DownloadOutlined,
@@ -41,6 +42,7 @@ import {
   DownloadRecord
 } from '../api/phoneGenerationApi';
 import { timezoneApi } from '../api/timezoneApi';
+import PhoneNumbersTab from './PhoneNumbersTab';
 
 const { Title, Text } = Typography;
 const { Search } = Input;
@@ -502,17 +504,41 @@ const PhoneNumberDashboard: React.FC<PhoneNumberDashboardProps> = ({ refreshTrig
         </Row>
       </Card>
 
-      {/* Table */}
+      {/* Tabs */}
       <Card>
-        <Table
-          columns={columns}
-          dataSource={generations}
-          rowKey="id"
-          pagination={pagination}
-          loading={loading}
-          onChange={handleTableChange}
-          scroll={{ x: 1000 }}
-          size="middle"
+        <Tabs
+          defaultActiveKey="generations"
+          items={[
+            {
+              key: 'generations',
+              label: (
+                <span>
+                  <FileTextOutlined /> Generations
+                </span>
+              ),
+              children: (
+                <Table
+                  columns={columns}
+                  dataSource={generations}
+                  rowKey="id"
+                  pagination={pagination}
+                  loading={loading}
+                  onChange={handleTableChange}
+                  scroll={{ x: 1000 }}
+                  size="middle"
+                />
+              ),
+            },
+            {
+              key: 'phone-numbers',
+              label: (
+                <span>
+                  <PhoneOutlined /> Phone Numbers
+                </span>
+              ),
+              children: <PhoneNumbersTab />,
+            },
+          ]}
         />
       </Card>
 

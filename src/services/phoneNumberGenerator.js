@@ -1,4 +1,5 @@
 const PhoneNumber = require('../models/PhoneNumber');
+const PhoneNumberGeneration = require('../models/PhoneNumberGeneration');
 const Telecare = require('../models/Telecare');
 
 class PhoneNumberGenerator {
@@ -66,11 +67,11 @@ class PhoneNumberGenerator {
 
   // Validate NPA, NXX, and THOUSANDS - ALL THREE ARE REQUIRED
   validatePhoneComponents(npa, nxx, thousands) {
-    // Check if NPA and NXX are present (THOUSANDS can be null/empty for full series generation)
-    if (!npa || !nxx) {
+    // Check if ALL THREE required fields are present
+    if (!npa || !nxx || thousands === undefined || thousands === null) {
       return { 
         valid: false, 
-        error: `Missing required fields: NPA=${!!npa}, NXX=${!!nxx}` 
+        error: `Missing required fields: NPA=${!!npa}, NXX=${!!nxx}, THOUSANDS=${thousands !== undefined && thousands !== null}` 
       };
     }
 
@@ -84,14 +85,14 @@ class PhoneNumberGenerator {
       return { valid: false, error: 'NXX must be exactly 3 digits' };
     }
 
-    // Reject THOUSANDS = "-" (invalid data)
-    if (thousands === '-') {
-      return { valid: false, error: 'THOUSANDS cannot be "-" - skipping entire series' };
+    // THOUSANDS must be a single digit (0-9) - no exceptions
+    if (thousands === '' || thousands === '-' || thousands === undefined || thousands === null) {
+      return { valid: false, error: 'THOUSANDS must be a single digit (0-9) - cannot be empty, "-", or null' };
     }
 
-    // If THOUSANDS is provided and not '-', it must be a single digit (0-9)
-    if (thousands && thousands !== '' && (thousands.length !== 1 || !/^\d$/.test(thousands.toString()))) {
-      return { valid: false, error: 'THOUSANDS must be exactly 1 digit (0-9) if provided' };
+    // Validate THOUSANDS format (exactly 1 digit 0-9)
+    if (thousands.length !== 1 || !/^\d$/.test(thousands.toString())) {
+      return { valid: false, error: 'THOUSANDS must be exactly 1 digit (0-9)' };
     }
 
     return { valid: true };
@@ -101,7 +102,7 @@ class PhoneNumberGenerator {
   generatePhoneNumbersForNpaNxx(npa, nxx, thousands, state, zip, companyType, company, ratecenter, filterId = null) {
     const phoneNumbers = [];
     
-    // Validate components
+    // Validate components - ALL THREE (NPA, NXX, THOUSANDS) are required
     const validation = this.validatePhoneComponents(npa, nxx, thousands);
     if (!validation.valid) {
       console.warn(`⚠️ Skipping invalid NPA-NXX: ${npa}-${nxx} (${validation.error})`);
@@ -111,54 +112,28 @@ class PhoneNumberGenerator {
     // Get timezone for the state
     const timezone = this.getTimezoneForState(state);
 
-    // If THOUSANDS is null/empty, generate for all thousands digits (0-9)
-    // If THOUSANDS is a specific digit, generate only for that digit
-    if (!thousands || thousands === '') {
-      // Generate for all thousands digits (0-9)
-      for (let thousandsDigit = 0; thousandsDigit <= 9; thousandsDigit++) {
-        for (let i = 0; i <= 999; i++) {
-          const lastThreeDigits = i.toString().padStart(3, '0');
-          const fullPhoneNumber = `${npa}${nxx}${thousandsDigit}${lastThreeDigits}`;
-          
-          phoneNumbers.push({
-            npa,
-            nxx,
-            thousands: thousandsDigit.toString(),
-            full_phone_number: fullPhoneNumber,
-            state,
-            timezone,
-            company_type: companyType,
-            company: company,
-            ratecenter,
-            zip,
-            filter_id: filterId
-        });
-        }
-      }
-    } else {
-      // Generate for specific thousands digit
-      const thousandsStr = thousands.toString().trim();
+    // Generate ONLY for the specific thousands digit (0-9)
+    const thousandsStr = thousands.toString().trim();
+    
+    // Generate numbers from 000 to 999 for the specific thousands digit
+    // Format: NPA + NXX + THOUSANDS + 000-999 (total 10 digits)
+    for (let i = 0; i <= 999; i++) {
+      const lastThreeDigits = i.toString().padStart(3, '0');
+      const fullPhoneNumber = `${npa}${nxx}${thousandsStr}${lastThreeDigits}`;
       
-      // Generate numbers from 000 to 999 for the complete series
-      // Format: NPA + NXX + THOUSANDS + 000-999 (total 10 digits)
-      for (let i = 0; i <= 999; i++) {
-        const lastThreeDigits = i.toString().padStart(3, '0');
-        const fullPhoneNumber = `${npa}${nxx}${thousandsStr}${lastThreeDigits}`;
-        
-        phoneNumbers.push({
-          npa,
-          nxx,
-          thousands: thousandsStr,
-          full_phone_number: fullPhoneNumber,
-          state,
-          timezone,
-          company_type: companyType,
-          company: company,
-          ratecenter,
-          zip,
-          filter_id: filterId
-        });
-      }
+      phoneNumbers.push({
+        npa,
+        nxx,
+        thousands: thousandsStr,
+        full_phone_number: fullPhoneNumber,
+        state,
+        timezone,
+        company_type: companyType,
+        company: company,
+        ratecenter,
+        zip,
+        filter_id: filterId
+      });
     }
 
     return phoneNumbers;
@@ -227,11 +202,11 @@ class PhoneNumberGenerator {
           // Extract required fields
           const npa = payload.NPA;
           const nxx = payload.NXX;
-          const thousands = payload.THOUSANDS; // Don't default to '-'
+          const thousands = payload.THOUSANDS;
           
-          // Skip rows with THOUSANDS = "-" (don't generate phone numbers for invalid data)
-          if (thousands === '-') {
-            console.warn(`⚠️ Skipping telecare output row with THOUSANDS = "-" - NPA: ${npa}, NXX: ${nxx} (no phone numbers generated)`);
+          // Skip rows with missing or invalid THOUSANDS
+          if (!thousands || thousands === '' || thousands === '-' || thousands === undefined || thousands === null) {
+            console.warn(`⚠️ Skipping telecare output row with invalid THOUSANDS="${thousands}" - NPA: ${npa}, NXX: ${nxx} (THOUSANDS must be 0-9)`);
             totalFailed += 1000;
             continue;
           }
@@ -315,12 +290,32 @@ class PhoneNumberGenerator {
         finishedAt: new Date()
       });
 
+      // Create generation record for the Phone Numbers tab
+      const generationName = `Telecare Run ${runId} - Zip ${zip}${filterId ? ` - Filter ${filterId}` : ''}`;
+      const generationData = {
+        generation_name: generationName,
+        user_id: 'system',
+        user_name: 'System Generated',
+        filter_criteria: { run_id: runId, zip, filter_id: filterId },
+        source_zipcodes: [zip],
+        source_timezone_ids: [],
+        total_records: totalGenerated,
+        file_size: 0, // Will be updated when CSV is generated
+        csv_filename: null,
+        csv_path: null,
+        status: 'generated'
+      };
+
+      const generation = await PhoneNumberGeneration.create(generationData);
+      console.log(`📝 Created generation record: ${generation.id} - ${generationName}`);
+
       console.log(`🎉 Phone number generation completed successfully!`);
       console.log(`📊 Summary: ${totalGenerated} generated, ${totalFailed} failed`);
 
       return {
         success: true,
         job_id: job.id,
+        generation_id: generation.id,
         total_generated: totalGenerated,
         total_failed: totalFailed,
         total_processed: outputRows.length
@@ -441,7 +436,7 @@ class PhoneNumberGenerator {
   }
 
   // Generate phone numbers directly from NPA NXX records (NEW METHOD - NO TELECARE REQUIRED)
-  async generatePhoneNumbersFromNpaNxxRecords(zip, filterId = null) {
+  async generatePhoneNumbersFromNpaNxxRecords(zip, filterId = null, filterCriteria = null) {
     let job = null;
     
     try {
@@ -480,15 +475,65 @@ class PhoneNumberGenerator {
       // Update job status to processing
       await PhoneNumber.updateJobStatus(job.id, 'processing');
 
-      // Get NPA NXX records for this zipcode
+      // Get NPA NXX records for this zipcode with optional filter criteria
       const Record = require('../models/Record');
-      const npaNxxRecords = await Record.findByZip(zip);
+      let npaNxxRecords = await Record.findByZip(zip);
       
       if (!npaNxxRecords || npaNxxRecords.length === 0) {
         throw new Error(`No NPA NXX records found for zipcode ${zip}`);
       }
 
-      console.log(`📊 Found ${npaNxxRecords.length} NPA NXX records for zip ${zip}`);
+      // Apply filter criteria if provided
+      if (filterCriteria) {
+        console.log(`🔍 Applying filter criteria:`, filterCriteria);
+        
+        // Filter by timezone if specified
+        if (filterCriteria.timezone) {
+          const timezoneValues = Array.isArray(filterCriteria.timezone) 
+            ? filterCriteria.timezone 
+            : filterCriteria.timezone.split(',').map(s => s.trim()).filter(s => s);
+          
+          if (timezoneValues.length > 0) {
+            const originalCount = npaNxxRecords.length;
+            npaNxxRecords = npaNxxRecords.filter(record => 
+              record.timezone_id && timezoneValues.includes(record.timezone_id.toString())
+            );
+            console.log(`🌍 Filtered by timezone: ${originalCount} -> ${npaNxxRecords.length} records`);
+          }
+        }
+        
+        // Filter by state if specified
+        if (filterCriteria.state) {
+          const stateValues = Array.isArray(filterCriteria.state) 
+            ? filterCriteria.state 
+            : filterCriteria.state.split(',').map(s => s.trim()).filter(s => s);
+          
+          if (stateValues.length > 0) {
+            const originalCount = npaNxxRecords.length;
+            npaNxxRecords = npaNxxRecords.filter(record => 
+              record.state_code && stateValues.includes(record.state_code)
+            );
+            console.log(`🏛️ Filtered by state: ${originalCount} -> ${npaNxxRecords.length} records`);
+          }
+        }
+        
+        // Filter by city if specified
+        if (filterCriteria.city) {
+          const cityValues = Array.isArray(filterCriteria.city) 
+            ? filterCriteria.city 
+            : filterCriteria.city.split(',').map(s => s.trim()).filter(s => s);
+          
+          if (cityValues.length > 0) {
+            const originalCount = npaNxxRecords.length;
+            npaNxxRecords = npaNxxRecords.filter(record => 
+              record.city && cityValues.includes(record.city)
+            );
+            console.log(`🏙️ Filtered by city: ${originalCount} -> ${npaNxxRecords.length} records`);
+          }
+        }
+      }
+
+      console.log(`📊 Found ${npaNxxRecords.length} NPA NXX records for zip ${zip}${filterCriteria ? ' (after filtering)' : ''}`);
 
       // Update job with total count
       await PhoneNumber.updateJobStatus(job.id, 'processing', {

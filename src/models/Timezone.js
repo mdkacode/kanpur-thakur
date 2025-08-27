@@ -6,7 +6,7 @@ class Timezone {
       const query = `
         SELECT id, timezone_name, display_name, abbreviation_standard, 
                abbreviation_daylight, utc_offset_standard, utc_offset_daylight, 
-               observes_dst, description, states, created_at, updated_at
+               observes_dst, created_at, updated_at
         FROM timezones 
         ORDER BY display_name ASC
       `;
@@ -23,7 +23,7 @@ class Timezone {
       const query = `
         SELECT id, timezone_name, display_name, abbreviation_standard, 
                abbreviation_daylight, utc_offset_standard, utc_offset_daylight, 
-               observes_dst, description, states, created_at, updated_at
+               observes_dst, created_at, updated_at
         FROM timezones 
         WHERE id = $1
       `;
@@ -40,7 +40,7 @@ class Timezone {
       const query = `
         SELECT id, timezone_name, display_name, abbreviation_standard, 
                abbreviation_daylight, utc_offset_standard, utc_offset_daylight, 
-               observes_dst, description, states, created_at, updated_at
+               observes_dst, created_at, updated_at
         FROM timezones 
         WHERE timezone_name = $1
       `;
@@ -54,15 +54,16 @@ class Timezone {
 
   static async findByState(state) {
     try {
+      // Since states column doesn't exist, we'll return all timezones
+      // The state-to-timezone mapping should be handled at the application level
       const query = `
         SELECT id, timezone_name, display_name, abbreviation_standard, 
                abbreviation_daylight, utc_offset_standard, utc_offset_daylight, 
-               observes_dst, description, states, created_at, updated_at
+               observes_dst, created_at, updated_at
         FROM timezones 
-        WHERE $1 = ANY(states)
         ORDER BY display_name ASC
       `;
-      const result = await db.query(query, [state]);
+      const result = await db.query(query);
       return result.rows;
     } catch (error) {
       console.error('Error fetching timezones by state:', error);
@@ -79,16 +80,14 @@ class Timezone {
         abbreviation_daylight,
         utc_offset_standard,
         utc_offset_daylight,
-        observes_dst,
-        description,
-        states
+        observes_dst
       } = timezoneData;
 
       const query = `
         INSERT INTO timezones (
           timezone_name, display_name, abbreviation_standard, abbreviation_daylight,
-          utc_offset_standard, utc_offset_daylight, observes_dst, description, states
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          utc_offset_standard, utc_offset_daylight, observes_dst
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *
       `;
 
@@ -99,9 +98,7 @@ class Timezone {
         abbreviation_daylight,
         utc_offset_standard,
         utc_offset_daylight,
-        observes_dst,
-        description,
-        states
+        observes_dst
       ];
 
       const result = await db.query(query, values);
@@ -121,16 +118,14 @@ class Timezone {
         abbreviation_daylight,
         utc_offset_standard,
         utc_offset_daylight,
-        observes_dst,
-        description,
-        states
+        observes_dst
       } = timezoneData;
 
       const query = `
         UPDATE timezones 
         SET timezone_name = $2, display_name = $3, abbreviation_standard = $4,
             abbreviation_daylight = $5, utc_offset_standard = $6, utc_offset_daylight = $7,
-            observes_dst = $8, description = $9, states = $10, updated_at = CURRENT_TIMESTAMP
+            observes_dst = $8, updated_at = CURRENT_TIMESTAMP
         WHERE id = $1
         RETURNING *
       `;
@@ -143,9 +138,7 @@ class Timezone {
         abbreviation_daylight,
         utc_offset_standard,
         utc_offset_daylight,
-        observes_dst,
-        description,
-        states
+        observes_dst
       ];
 
       const result = await db.query(query, values);

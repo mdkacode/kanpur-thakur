@@ -1,0 +1,10 @@
+{
+  "id": "checkpoint_test_upload_1756317441315_1756317441324",
+  "uploadId": "test_upload_1756317441315",
+  "filePath": "/Users/mayank/Documents/work/thakur/sheetbc/src/uploads/file-1756317441321-862645800.csv",
+  "status": "processing",
+  "startTime": "2025-08-27T17:57:21.324Z",
+  "processedChunks": 2,
+  "totalChunks": 9,
+  "lastProcessedChunk": 1
+}

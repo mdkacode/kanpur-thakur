@@ -1,6 +1,7 @@
 const PhoneNumberGenerator = require('../services/phoneNumberGenerator');
 const PhoneNumber = require('../models/PhoneNumber');
 const Telecare = require('../models/Telecare');
+const { format } = require('date-fns');
 
 class PhoneNumberController {
   // Generate phone numbers from telecare output
@@ -235,7 +236,7 @@ class PhoneNumberController {
   // Generate phone numbers from existing NPA NXX records (NO TELECARE REQUIRED)
   static async generateFromNpaNxxRecords(req, res) {
     try {
-      const { zip, filter_id } = req.body;
+      const { zip, filter_id, filter_criteria } = req.body;
 
       if (!zip) {
         return res.status(400).json({
@@ -245,12 +246,15 @@ class PhoneNumberController {
       }
 
       console.log(`🔢 API: Starting phone number generation from NPA NXX records for zip ${zip}, filter ${filter_id || 'none'}`);
+      if (filter_criteria) {
+        console.log(`🔍 Filter criteria:`, filter_criteria);
+      }
 
       // Start phone number generation in background
       const generator = new PhoneNumberGenerator();
       
-      // Generate phone numbers asynchronously from NPA NXX records
-      generator.generatePhoneNumbersFromNpaNxxRecords(zip, filter_id || null)
+      // Generate phone numbers asynchronously from NPA NXX records with filter criteria
+      generator.generatePhoneNumbersFromNpaNxxRecords(zip, filter_id || null, filter_criteria || null)
         .then((result) => {
           console.log(`✅ Phone number generation from NPA NXX records completed for zip ${zip}:`, result);
         })
@@ -264,6 +268,7 @@ class PhoneNumberController {
         message: 'Phone number generation from NPA NXX records started',
         zip,
         filter_id: filter_id || null,
+        filter_criteria: filter_criteria || null,
         status: 'processing'
       });
 
@@ -596,6 +601,75 @@ class PhoneNumberController {
     }
   }
 
+  // Export phone numbers with filters to CSV
+  static async exportFilteredToCSV(req, res) {
+    try {
+      const {
+        columns = 'full_phone_number,npa,nxx,thousands,state_code,zip,timezone_display_name',
+        search,
+        sortBy = 'created_at',
+        sortOrder = 'DESC',
+        npa,
+        nxx,
+        thousands,
+        state_code,
+        zip,
+        timezone_id
+      } = req.query;
+
+      const filters = {
+        npa,
+        nxx,
+        thousands,
+        state_code,
+        zip,
+        timezone_id
+      };
+
+      // Remove undefined filters
+      Object.keys(filters).forEach(key => {
+        if (filters[key] === undefined || filters[key] === null || filters[key] === '') {
+          delete filters[key];
+        }
+      });
+
+      // Get all phone numbers with filters
+      const result = await PhoneNumber.getPhoneNumbersWithFilters(
+        1,
+        1000000, // Get all numbers
+        search,
+        sortBy,
+        sortOrder,
+        filters
+      );
+
+      if (!result.phoneNumbers || result.phoneNumbers.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'No phone numbers found with the specified filters'
+        });
+      }
+
+      // Parse columns
+      const selectedColumns = columns.split(',').map(col => col.trim());
+
+      // Generate CSV content
+      const csvContent = generateCSVContent(result.phoneNumbers, selectedColumns);
+      
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="phone_numbers_${format(new Date(), 'yyyy-MM-dd_HH-mm-ss')}.csv"`);
+      res.send(csvContent);
+
+    } catch (error) {
+      console.error('Error exporting filtered phone numbers to CSV:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error exporting phone numbers to CSV',
+        error: error.message
+      });
+    }
+  }
+
   // Get phone number statistics
   static async getStats(req, res) {
     try {
@@ -764,6 +838,146 @@ class PhoneNumberController {
       });
     }
   }
+
+  // Get phone numbers with filters
+  static async getPhoneNumbersWithFilters(req, res) {
+    try {
+      const {
+        page = 1,
+        limit = 50,
+        search,
+        sortBy = 'created_at',
+        sortOrder = 'DESC',
+        npa,
+        nxx,
+        thousands,
+        state_code,
+        zip,
+        timezone_id
+      } = req.query;
+
+      const filters = {
+        npa,
+        nxx,
+        thousands,
+        state_code,
+        zip,
+        timezone_id
+      };
+
+      // Remove undefined filters
+      Object.keys(filters).forEach(key => {
+        if (filters[key] === undefined || filters[key] === null || filters[key] === '') {
+          delete filters[key];
+        }
+      });
+
+      const result = await PhoneNumber.getPhoneNumbersWithFilters(
+        parseInt(page),
+        parseInt(limit),
+        search,
+        sortBy,
+        sortOrder,
+        filters
+      );
+
+      res.json({
+        success: true,
+        data: result.phoneNumbers,
+        pagination: result.pagination,
+        filters: result.filters
+      });
+
+    } catch (error) {
+      console.error('Error getting phone numbers with filters:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error getting phone numbers with filters',
+        error: error.message
+      });
+    }
+  }
+
+  // Get unique values for a field
+  static async getUniqueValues(req, res) {
+    try {
+      const { field } = req.params;
+      const { limit = 1000 } = req.query;
+
+      const allowedFields = ['npa', 'nxx', 'thousands', 'state_code', 'zip', 'timezone_id'];
+      
+      if (!allowedFields.includes(field)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid field. Allowed fields: ${allowedFields.join(', ')}`
+        });
+      }
+
+      const values = await PhoneNumber.getUniqueValues(field, parseInt(limit));
+
+      res.json({
+        success: true,
+        data: values
+      });
+
+    } catch (error) {
+      console.error('Error getting unique values:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Error getting unique values',
+        error: error.message
+      });
+    }
+  }
+}
+
+// Helper function to generate CSV content
+function generateCSVContent(phoneNumbers, columns) {
+  if (!phoneNumbers || phoneNumbers.length === 0) {
+    return '';
+  }
+
+  // Create header row
+  const headers = columns.map(col => {
+    const columnMap = {
+      'full_phone_number': 'Full Phone Number',
+      'npa': 'NPA',
+      'nxx': 'NXX',
+      'thousands': 'Thousands',
+      'state_code': 'State',
+      'zip': 'Zip Code',
+      'city': 'City',
+      'county': 'County',
+      'timezone_display_name': 'Timezone',
+      'created_at': 'Created At'
+    };
+    return columnMap[col] || col;
+  });
+
+  // Create data rows
+  const rows = phoneNumbers.map(phoneNumber => {
+    return columns.map(col => {
+      let value = phoneNumber[col];
+      
+      // Format dates
+      if (col === 'created_at' && value) {
+        value = format(new Date(value), 'yyyy-MM-dd HH:mm:ss');
+      }
+      
+      // Escape quotes and wrap in quotes if contains comma
+      if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+        value = `"${value.replace(/"/g, '""')}"`;
+      }
+      
+      return value || '';
+    });
+  });
+
+  // Combine headers and rows
+  const csvRows = [headers, ...rows];
+  
+  // Convert to CSV string
+  return csvRows.map(row => row.join(',')).join('\n');
 }
 
 module.exports = PhoneNumberController;

@@ -1,4 +1,6 @@
 const pythonProcessor = require('../services/pythonProcessor');
+const ProcessingSession = require('../models/ProcessingSession');
+const { v4: uuidv4 } = require('uuid');
 
 class PythonProcessorController {
     /**
@@ -6,7 +8,7 @@ class PythonProcessorController {
      */
     static async processMissing(req, res) {
         try {
-            const { zipcode, filter_config = {} } = req.body;
+            const { zipcode, filter_config = {}, userId = 1 } = req.body;
 
             if (!zipcode) {
                 return res.status(400).json({
@@ -17,7 +19,32 @@ class PythonProcessorController {
 
             console.log(`🔧 Processing request for zipcode: ${zipcode}`);
 
-            const result = await pythonProcessor.processMissing(zipcode, filter_config);
+            // Create processing session
+            const sessionId = `npa_nxx_${uuidv4()}`;
+            const sessionData = {
+                sessionId,
+                userId: parseInt(userId),
+                filterId: filter_config.filterId || null,
+                filterCriteria: filter_config,
+                sourceZipcodes: Array.isArray(zipcode) ? zipcode : [zipcode],
+                totalRecords: 0, // Will be updated after processing
+                sessionType: 'npa_nxx_processing'
+            };
+
+            const session = await ProcessingSession.create(sessionData);
+            console.log(`📊 Created processing session: ${sessionId}`);
+
+            // Check if we're processing multiple zipcodes
+            const zipcodes = Array.isArray(zipcode) ? zipcode : [zipcode];
+            
+            let result;
+            if (zipcodes.length > 1) {
+                // Use batch processing with 10-second delays
+                result = await pythonProcessor.processMultipleZipcodes(zipcodes, filter_config, userId);
+            } else {
+                // Use single zipcode processing
+                result = await pythonProcessor.processMissing(zipcodes[0], filter_config, userId);
+            }
 
             switch (result.status) {
                 case 'already_processed':
@@ -29,19 +56,40 @@ class PythonProcessorController {
                     break;
 
                 case 'completed':
-                    res.json({
-                        success: true,
-                        status: 'completed',
-                        jobId: result.jobId,
-                        message: result.message,
-                        rowCount: result.rowCount
-                    });
+                    // For batch processing, the session is already updated by the processor
+                    if (result.summary) {
+                        // This is a batch processing result
+                        res.json({
+                            success: true,
+                            status: 'completed',
+                            sessionId: result.sessionId,
+                            message: `Batch processing completed: ${result.summary.completed}/${result.summary.total} successful`,
+                            summary: result.summary,
+                            results: result.results
+                        });
+                    } else {
+                        // This is a single processing result
+                        res.json({
+                            success: true,
+                            status: 'completed',
+                            sessionId: result.sessionId,
+                            jobId: result.jobId,
+                            message: result.message,
+                            rowCount: result.rowCount
+                        });
+                    }
                     break;
 
                 case 'error':
+                    // Update session with error
+                    await ProcessingSession.updateStatus(sessionId, 'failed', {
+                        errorMessage: result.message
+                    });
+
                     res.status(500).json({
                         success: false,
                         status: 'error',
+                        sessionId,
                         message: result.message
                     });
                     break;

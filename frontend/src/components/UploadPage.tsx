@@ -14,7 +14,7 @@ interface UploadPageProps {
 }
 
 const UploadPage: React.FC<UploadPageProps> = ({ onUploadSuccess }) => {
-  const [activeTab, setActiveTab] = useState('single');
+  const [activeTab, setActiveTab] = useState('multiple');
   const { isDarkMode } = useTheme();
 
   const handleSingleUploadSuccess = (response: UploadResponse) => {
@@ -31,7 +31,7 @@ const UploadPage: React.FC<UploadPageProps> = ({ onUploadSuccess }) => {
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '20px' }}>
-      <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+      {/* <div style={{ textAlign: 'center', marginBottom: '32px' }}>
         <Title level={1} style={{ 
           margin: 0,
           color: isDarkMode ? '#ffffff' : '#001529',
@@ -47,7 +47,7 @@ const UploadPage: React.FC<UploadPageProps> = ({ onUploadSuccess }) => {
         }}>
           Choose your preferred upload method
         </Text>
-      </div>
+      </div> */}
 
       {/* Upload Method Comparison */}
       {/* <Card
@@ -108,32 +108,32 @@ const UploadPage: React.FC<UploadPageProps> = ({ onUploadSuccess }) => {
             color: isDarkMode ? '#ffffff' : '#000000'
           }}
           items={[
-            {
-              key: 'single',
-              label: (
-                <Space>
-                  <UploadOutlined />
-                  Single File Upload
-                </Space>
-              ),
-              children: (
-                <div style={{ padding: '20px 0' }}>
-                  <Alert
-                    message="Single File Upload"
-                    description="Upload one large file (up to 300MB). This method is best for large datasets that you want to process as a single unit."
-                    type="info"
-                    showIcon
-                    style={{
-                      marginBottom: '20px',
-                      borderRadius: '8px',
-                      backgroundColor: isDarkMode ? '#1a1a1a' : '#f0f9ff',
-                      border: isDarkMode ? '1px solid #303030' : '1px solid #bae7ff'
-                    }}
-                  />
-                  <FileUpload onUploadSuccess={handleSingleUploadSuccess} />
-                </div>
-              )
-            },
+            // {
+            //   key: 'single',
+            //   label: (
+            //     <Space>
+            //       <UploadOutlined />
+            //       Single File Upload
+            //     </Space>
+            //   ),
+            //   children: (
+            //     <div style={{ padding: '20px 0' }}>
+            //       <Alert
+            //         message="Single File Upload"
+            //         description="Upload one large file (up to 300MB). This method is best for large datasets that you want to process as a single unit."
+            //         type="info"
+            //         showIcon
+            //         style={{
+            //           marginBottom: '20px',
+            //           borderRadius: '8px',
+            //           backgroundColor: isDarkMode ? '#1a1a1a' : '#f0f9ff',
+            //           border: isDarkMode ? '1px solid #303030' : '1px solid #bae7ff'
+            //         }}
+            //       />
+            //       <FileUpload onUploadSuccess={handleSingleUploadSuccess} />
+            //     </div>
+            //   )
+            // },
             {
               key: 'multiple',
               label: (
@@ -165,39 +165,7 @@ const UploadPage: React.FC<UploadPageProps> = ({ onUploadSuccess }) => {
       </Card>
 
       {/* Tips Section */}
-      <Card
-        style={{
-          background: isDarkMode ? '#1f1f1f' : '#ffffff',
-          border: `1px solid ${isDarkMode ? '#303030' : '#f0f0f0'}`,
-          borderRadius: '16px',
-          boxShadow: '0 8px 30px rgba(0, 0, 0, 0.12)',
-          marginTop: '24px'
-        }}
-      >
-        <Title level={4} style={{ marginBottom: '16px' }}>
-          Upload Tips
-        </Title>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-          <div>
-            <Text strong>For Large Files (100MB):</Text>
-            <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
-              <li>Use Single File Upload for files up to 300MB</li>
-              <li>Ensure stable internet connection</li>
-              <li>Consider splitting very large files</li>
-              <li>Monitor upload progress</li>
-            </ul>
-          </div>
-          <div>
-            <Text strong>For Multiple Files:</Text>
-            <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
-              <li>Use Multiple File Upload for reliability</li>
-              <li>Keep files under 100MB each</li>
-              <li>Files are processed sequentially</li>
-              <li>Failed uploads can be retried</li>
-            </ul>
-          </div>
-        </div>
-      </Card>
+     
     </div>
   );
 };

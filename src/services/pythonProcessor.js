@@ -2,10 +2,12 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const Telecare = require('../models/Telecare');
+const ProcessingSession = require('../models/ProcessingSession');
+const { v4: uuidv4 } = require('uuid');
 
 class PythonProcessor {
     constructor() {
-        this.scriptPath = path.join(process.cwd(), 'scrap.py');
+        this.scriptPath = path.join(process.cwd(), 'scrap_improved.py');
         this.logDir = path.join(process.cwd(), 'logs');
         this.ensureLogDirectory();
     }
@@ -42,19 +44,44 @@ class PythonProcessor {
     /**
      * Process missing Python script for a given dataset/filter
      */
-    async processMissing(zipcode, filterConfig = {}) {
+    async processMissing(zipcode, filterConfig = {}, userId = 1) {
         try {
             console.log(`🔧 Starting Python processing for zipcode: ${zipcode}`);
+
+            // Create processing session
+            const sessionId = `python_processing_${uuidv4()}`;
+            const sessionData = {
+                sessionId,
+                userId: parseInt(userId),
+                filterId: filterConfig.filterId || null,
+                filterCriteria: filterConfig,
+                sourceZipcodes: Array.isArray(zipcode) ? zipcode : [zipcode],
+                totalRecords: 0, // Will be updated after processing
+                sessionType: 'python_script_processing'
+            };
+
+            const session = await ProcessingSession.create(sessionData);
+            console.log(`📊 Created processing session: ${sessionId}`);
 
             // Check if already processed
             const alreadyProcessed = await this.checkProcessedOutput(zipcode);
             if (alreadyProcessed) {
                 console.log(`✅ Output already exists for zipcode: ${zipcode}`);
+                
+                // Update session status
+                await ProcessingSession.updateStatus(sessionId, 'completed', {
+                    processedRecords: 0
+                });
+
                 return {
                     status: 'already_processed',
+                    sessionId,
                     message: 'Output already exists for this zipcode'
                 };
             }
+
+            // Update session status to processing
+            await ProcessingSession.updateStatus(sessionId, 'processing');
 
             // Create a new telecare run
             const run = await Telecare.createRun(zipcode, 'scrap.py', 'output.csv', '1.0', {});
@@ -76,9 +103,27 @@ class PythonProcessor {
                     finished_at: new Date()
                 });
 
+                // Update processing session status
+                await ProcessingSession.updateStatus(sessionId, 'completed', {
+                    processedRecords: result.rowCount
+                });
+
+                // Add generated file to session
+                if (result.outputFile) {
+                    await ProcessingSession.addGeneratedFile(sessionId, {
+                        fileName: `scrap_output_${zipcode}.csv`,
+                        filePath: result.outputFile,
+                        fileType: 'python_output',
+                        fileSize: result.fileSize || 0,
+                        recordCount: result.rowCount,
+                        description: `Python script output for zipcode: ${zipcode}`
+                    });
+                }
+
                 console.log(`✅ Python processing completed successfully for zipcode: ${zipcode}`);
                 return {
                     status: 'completed',
+                    sessionId,
                     jobId: run.id,
                     message: 'Processing completed successfully',
                     rowCount: result.rowCount
@@ -90,13 +135,31 @@ class PythonProcessor {
                     error_message: result.error
                 });
 
+                // Update processing session status to failed
+                await ProcessingSession.updateStatus(sessionId, 'failed', {
+                    errorMessage: result.error
+                });
+
                 throw new Error(result.error);
             }
 
         } catch (error) {
             console.error(`❌ Error processing Python script for zipcode ${zipcode}:`, error);
+            
+            // Update session status to failed if session was created
+            if (sessionId) {
+                try {
+                    await ProcessingSession.updateStatus(sessionId, 'failed', {
+                        errorMessage: error.message
+                    });
+                } catch (sessionError) {
+                    console.error('Error updating session status:', sessionError);
+                }
+            }
+            
             return {
                 status: 'error',
+                sessionId,
                 message: error.message
             };
         }
@@ -197,16 +260,25 @@ class PythonProcessor {
                 let stderr = '';
                 let startTime = Date.now();
 
-                // Capture stdout
-                pythonProcess.stdout.on('data', (data) => {
-                    stdout += data.toString();
-                    console.log(`🐍 Python stdout: ${data.toString().trim()}`);
-                });
+                // This is now handled above with error detection
 
                 // Capture stderr
                 pythonProcess.stderr.on('data', (data) => {
                     stderr += data.toString();
                     console.error(`🐍 Python stderr: ${data.toString().trim()}`);
+                });
+
+                // Capture stdout for error detection
+                pythonProcess.stdout.on('data', (data) => {
+                    const output = data.toString();
+                    stdout += output;
+                    
+                    // Check if this is an error message
+                    if (output.startsWith('ERROR:')) {
+                        console.error(`🐍 Python error detected: ${output.trim()}`);
+                    } else {
+                        console.log(`🐍 Python stdout: ${output.trim()}`);
+                    }
                 });
 
                 // Handle process completion
@@ -228,6 +300,14 @@ class PythonProcessor {
                         fs.unlinkSync(inputFile);
                     } catch (error) {
                         console.warn('Could not clean up input file:', error.message);
+                    }
+
+                    // Check if stdout contains an error message
+                    if (stdout.includes('ERROR:')) {
+                        const errorMatch = stdout.match(/ERROR:\s*(.+)/);
+                        const errorMessage = errorMatch ? errorMatch[1] : 'Unknown error from Python script';
+                        reject(new Error(errorMessage));
+                        return;
                     }
 
                     if (code === 0) {
@@ -285,6 +365,105 @@ class PythonProcessor {
             fs.appendFileSync(logFile, logEntry);
         } catch (error) {
             console.error('Error logging execution:', error);
+        }
+    }
+
+    /**
+     * Process multiple zipcodes with delay between jobs
+     */
+    async processMultipleZipcodes(zipcodes, filterConfig = {}, userId = 1) {
+        try {
+            console.log(`🔧 Starting batch processing for ${zipcodes.length} zipcodes`);
+            
+            const results = [];
+            const sessionId = `batch_processing_${uuidv4()}`;
+            
+            // Create batch processing session
+            const sessionData = {
+                sessionId,
+                userId: parseInt(userId),
+                filterId: filterConfig.filterId || null,
+                filterCriteria: filterConfig,
+                sourceZipcodes: zipcodes,
+                totalRecords: 0,
+                sessionType: 'batch_python_processing'
+            };
+
+            const session = await ProcessingSession.create(sessionData);
+            console.log(`📊 Created batch processing session: ${sessionId}`);
+
+            let totalProcessedRecords = 0;
+            let completedJobs = 0;
+            let failedJobs = 0;
+
+            for (let i = 0; i < zipcodes.length; i++) {
+                const zipcode = zipcodes[i];
+                console.log(`🔄 Processing zipcode ${i + 1}/${zipcodes.length}: ${zipcode}`);
+
+                try {
+                    // Process single zipcode
+                    const result = await this.processMissing(zipcode, filterConfig, userId);
+                    
+                    if (result.status === 'completed') {
+                        completedJobs++;
+                        totalProcessedRecords += result.rowCount || 0;
+                        console.log(`✅ Completed zipcode ${zipcode}: ${result.rowCount} records`);
+                    } else if (result.status === 'already_processed') {
+                        completedJobs++;
+                        console.log(`✅ Already processed zipcode ${zipcode}`);
+                    } else {
+                        failedJobs++;
+                        console.log(`❌ Failed zipcode ${zipcode}: ${result.message}`);
+                    }
+
+                    results.push({
+                        zipcode,
+                        ...result
+                    });
+
+                } catch (error) {
+                    failedJobs++;
+                    console.error(`❌ Error processing zipcode ${zipcode}:`, error);
+                    results.push({
+                        zipcode,
+                        status: 'error',
+                        message: error.message
+                    });
+                }
+
+                // Add 10-second delay between jobs (except for the last one)
+                if (i < zipcodes.length - 1) {
+                    console.log(`⏳ Waiting 10 seconds before next job...`);
+                    await new Promise(resolve => setTimeout(resolve, 10000));
+                }
+            }
+
+            // Update batch session status
+            const finalStatus = failedJobs === 0 ? 'completed' : (completedJobs === 0 ? 'failed' : 'completed_with_errors');
+            await ProcessingSession.updateStatus(sessionId, finalStatus, {
+                processedRecords: totalProcessedRecords
+            });
+
+            console.log(`📊 Batch processing completed: ${completedJobs} successful, ${failedJobs} failed`);
+            
+            return {
+                status: 'completed',
+                sessionId,
+                results,
+                summary: {
+                    total: zipcodes.length,
+                    completed: completedJobs,
+                    failed: failedJobs,
+                    totalRecords: totalProcessedRecords
+                }
+            };
+
+        } catch (error) {
+            console.error('❌ Error in batch processing:', error);
+            return {
+                status: 'error',
+                message: error.message
+            };
         }
     }
 
