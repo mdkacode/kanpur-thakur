@@ -52,11 +52,19 @@ class DemographicRecord {
   static extractValues(record, columns) {
     return columns.map(column => {
       // Handle special cases and data transformations
-      let value = record[column] || '';
+      let value = record[column];
+      
+      // If value is undefined or null, return null for all fields
+      if (value === undefined || value === null) {
+        return null;
+      }
+      
+      // Convert to string for processing
+      value = value.toString().trim();
       
       // Clean up common data issues
-              if (value === '-1') {
-        value = '';
+      if (value === '-1' || value === '') {
+        return null;
       }
       
       // Remove currency symbols and commas from numeric fields
@@ -84,7 +92,8 @@ class DemographicRecord {
         return isNaN(numValue) ? null : numValue;
       }
       
-      return value;
+      // For all other fields, return null if empty, otherwise return the value
+      return value === '' ? null : value;
     });
   }
 
@@ -498,22 +507,38 @@ class DemographicRecord {
       const numericFields = ['mhhi', 'avg_hhi', 'pc_income', 'median_age'];
       numericFields.forEach(field => {
         if (columns.includes(field)) {
-          statsQuery += `,
-            AVG(CASE WHEN ${field} IS NOT NULL 
-                     AND ${field} != '' 
-                     AND ${field} != '-1' 
-                     AND ${field} ~ '^[0-9]+(\\.[0-9]+)?$'
-                     THEN CAST(${field} AS DECIMAL) END) as avg_${field},
-            MIN(CASE WHEN ${field} IS NOT NULL 
-                     AND ${field} != '' 
-                     AND ${field} != '-1' 
-                     AND ${field} ~ '^[0-9]+(\\.[0-9]+)?$'
-                     THEN CAST(${field} AS DECIMAL) END) as min_${field},
-            MAX(CASE WHEN ${field} IS NOT NULL 
-                     AND ${field} != '' 
-                     AND ${field} != '-1' 
-                     AND ${field} ~ '^[0-9]+(\\.[0-9]+)?$'
-                     THEN CAST(${field} AS DECIMAL) END) as max_${field}`;
+          // Handle text fields (mhhi, avg_hhi, pc_income) differently from numeric fields (median_age)
+          if (['mhhi', 'avg_hhi', 'pc_income'].includes(field)) {
+            // Text fields - check for empty strings and invalid values
+            statsQuery += `,
+              AVG(CASE WHEN ${field} IS NOT NULL 
+                       AND ${field} != '' 
+                       AND ${field} != '-1' 
+                       AND ${field} ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                       THEN CAST(${field} AS DECIMAL) END) as avg_${field},
+              MIN(CASE WHEN ${field} IS NOT NULL 
+                       AND ${field} != '' 
+                       AND ${field} != '-1' 
+                       AND ${field} ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                       THEN CAST(${field} AS DECIMAL) END) as min_${field},
+              MAX(CASE WHEN ${field} IS NOT NULL 
+                       AND ${field} != '' 
+                       AND ${field} != '-1' 
+                       AND ${field} ~ '^-?[0-9]+(\\.[0-9]+)?$'
+                       THEN CAST(${field} AS DECIMAL) END) as max_${field}`;
+          } else {
+            // Numeric fields (median_age, median_income) - only check for NULL and invalid values
+            statsQuery += `,
+              AVG(CASE WHEN ${field} IS NOT NULL 
+                       AND ${field} != -1
+                       THEN ${field} END) as avg_${field},
+              MIN(CASE WHEN ${field} IS NOT NULL 
+                       AND ${field} != -1
+                       THEN ${field} END) as min_${field},
+              MAX(CASE WHEN ${field} IS NOT NULL 
+                       AND ${field} != -1
+                       THEN ${field} END) as max_${field}`;
+          }
         }
       });
 
